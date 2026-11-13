@@ -193,7 +193,7 @@ npm run dev                        # 或只跑本地模拟：npm run db:local &&
 
 ## 五、登录流程
 
-1. 输入校园邮箱 → `POST /api/auth/otp/request`：先校验后缀，再限流（55 秒一次），生成 6 位验证码存 KV（10 分钟）。
+1. 输入校园邮箱 → `POST /api/auth/otp/request`：先校验后缀，再限流（60 秒一次，KV TTL 下限），生成 6 位验证码存 KV（10 分钟）。
 2. 邮件配置优先读 `/admin` 存在 KV 的设置，其次回退 Worker Secret `RESEND_API_KEY`，用 `sendMail()` 发出 6 位码；本地 `ALLOW_DEV_OTP=1` 时直接回填；三者都没配会返回 503 并提示管理员去 `/admin`，不会静默放行。
 3. `POST /api/auth/otp/verify` → 首次登录自动建号（学号 + 显示名），并加入默认群组。
 4. 签发 HMAC-SHA256 会话 token（`HttpOnly / Secure / SameSite=Lax` Cookie，30 天），同时在 KV 存白名单，登出即失效。
@@ -214,7 +214,7 @@ npm run dev                        # 或只跑本地模拟：npm run db:local &&
 | GET | `/api/me` · POST `/api/logout` | 当前用户 / 登出 |
 | GET | `/api/users` · POST `/api/presence` | 同学列表 / 在线心跳 |
 | GET/POST | `/api/threads` | 会话列表 / 发起私聊或建群 |
-| GET/POST | `/api/threads/:id/messages` | 最近 80 条（KV 缓存 15s）/ 发消息；`?after=` 走 D1 增量 |
+| GET/POST | `/api/threads/:id/messages` | 最近 80 条（KV 缓存 60s，写入即主动失效）/ 发消息；`?after=` 走 D1 增量 |
 | POST | `/api/threads/:id/read` | 清未读 |
 | POST | `/api/upload` | 图片写 R2，≤10MB（R2 关闭时 503） |
 | GET | `/api/file/*` | 未配自定义域时的图片回源 |
@@ -228,6 +228,7 @@ npm run dev                        # 或只跑本地模拟：npm run db:local &&
 
 - **实时性**：现在是轮询。要真·推送可把消息接口换成 Durable Objects + WebSocket，前端逻辑不用动。
 - **KV 最终一致性**：会话白名单与热配置在边缘可能有秒级延迟；如需严格即时吊销，把 session 表挪到 D1。
+- **KV TTL 下限 60 秒**：`expirationTtl` 必须是整数秒且 ≥ 60，写 55 / 15 / 5 会直接 400。所有带 TTL 的写入统一走 `src/kv.js` 的 `kvPut()` 自动 clamp；会话列表/消息缓存设为 60 秒，但发消息、建会话、标记已读都会主动 `delete` 缓存，所以不会看到旧数据。若见到 `KV PUT failed: 400 Invalid expiration_ttl of N`，说明有旧版本 Worker 在跑，重跑一次 Action 即可。
 - **邮件**：生产必须配好邮件服务（`/admin` 网页配置或 Secret `RESEND_API_KEY` 二选一），否则注册拿不到验证码；发件域名需在 Resend 验证通过。
 - **后台密码**：`ADMIN_PASSWORD` 要够长且只放 Secret；连续 5 次输错会锁 10 分钟。
 - **内容安全**：目前没有图片鉴黄、敏感词、举报与封禁；校园场景建议补审核和管理员删除接口。
@@ -247,6 +248,7 @@ schoolink/
 ├─ docs/preview-{hero,chat,login,admin,admin-login,mobile}.png
 ├─ src/index.js                   # 路由、鉴权、OTP 发信、上传、/admin API
 ├─ src/admin-page.js              # /admin 后台 HTML（Worker 直接回传，避免 Assets 301 循环）
+├─ src/kv.js                      # KV 写入统一封装（expirationTtl 强制 ≥ 60 秒）
 ├─ src/auth.js                    # HMAC 会话（用户/后台两套）、OTP、后缀校验、恒定时间比较
 ├─ src/store.js                   # D1 / KV 数据访问层、热配置、sendMail
 ├─ public/admin.html（備用直鏈）· admin.js · admin.css   # /admin 後台

@@ -5,6 +5,7 @@ import {
   sessionCookie, clearCookie, issueOtp, consumeOtp, timingSafeEqual,
 } from "./auth.js";
 import { ADMIN_HTML } from "./admin-page.js";
+import { kvPut, KV_MIN_TTL } from "./kv.js";
 import {
   loadConfig, saveConfig, maskToken, sendMail, publicUser, getUserById,
   getUserByEmail, createUser, listUsers, isMember, listThreads, createThread,
@@ -103,7 +104,8 @@ async function route(request, env, url) {
     }
     const rateKey = `RATE:OTP:${email}`;
     if (await env.CACHE.get(rateKey)) return fail("請稍後再試 / Please retry in a minute", 429);
-    await env.CACHE.put(rateKey, "1", { expirationTtl: 55 });
+    // KV 的 expirationTtl 最小 60 秒，原来写 55 会让整个注册请求 500
+    await kvPut(env, rateKey, "1", { expirationTtl: KV_MIN_TTL });
 
     const code = await issueOtp(env, email);
     if (cfg.mailConfigured) {
@@ -179,7 +181,7 @@ async function route(request, env, url) {
     if (attempts >= 5) return fail("嘗試太多次，請 10 分鐘後再試 / Too many attempts, retry in 10 min", 429);
     const body = await readJson(request);
     if (!timingSafeEqual(String(body.password || ""), env.ADMIN_PASSWORD)) {
-      await env.CACHE.put(rateKey, String(attempts + 1), { expirationTtl: 600 });
+      await kvPut(env, rateKey, String(attempts + 1), { expirationTtl: 600 });
       return fail("管理員密碼錯誤 / Wrong admin password", 401);
     }
     await env.CACHE.delete(rateKey);

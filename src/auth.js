@@ -1,7 +1,7 @@
 // 会话签名、Cookie、邮箱后缀校验、OTP。无第三方依赖，全部基于 Web Crypto。
+import { kvPut } from "./kv.js";
 const enc = new TextEncoder();
 const DAY = 86400;
-const SESSION_TTL = 30 * DAY;
 
 function b64u(bytes) {
   let s = "";
@@ -55,7 +55,8 @@ export async function signSession(env, uid, kind = "user") {
   const exp = Math.floor(Date.now() / 1000) + meta.ttl;
   const payload = b64u(enc.encode(JSON.stringify({ uid, jti, exp, k: kind })));
   const sig = b64u(await hmac(secret, payload));
-  await env.CACHE.put(
+  await kvPut(
+    env,
     `${meta.prefix}:${jti}`,
     JSON.stringify({ uid, exp }),
     { expirationTtl: meta.ttl }
@@ -109,7 +110,8 @@ export async function issueOtp(env, email) {
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
   const code = String(buf[0] % 1000000).padStart(6, "0");
-  await env.CACHE.put(
+  await kvPut(
+    env,
     `OTP:${email}`,
     JSON.stringify({ code, exp: Date.now() + 10 * 60 * 1000 }),
     { expirationTtl: 600 }

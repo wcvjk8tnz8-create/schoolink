@@ -3,9 +3,13 @@
 //   KV  = 会话、OTP、热配置、最近消息缓存、在线状态（缓存层）
 //   R2  = 图片对象（由 index.js 处理）
 import { normalizeDomains, normalizeEmail } from "./auth.js";
+import { kvPut, KV_MIN_TTL } from "./kv.js";
 
-const THREAD_CACHE_TTL = 5;
-const MSG_CACHE_TTL = 15;
+// KV 的 expirationTtl 最小 60 秒，不能用 5 / 15。
+// 写入路径（发消息、建会话、标记已读）都会主动 delete 对应缓存，所以 60 秒只是兜底上限。
+const THREAD_CACHE_TTL = KV_MIN_TTL;
+const MSG_CACHE_TTL = KV_MIN_TTL;
+const PRESENCE_TTL = 90;
 
 /* ------------------------------ 配置 ------------------------------ */
 
@@ -75,7 +79,7 @@ export async function saveConfig(env, patch) {
     updatedAt: Date.now(),
   };
   if (!next.domains.length) throw new Error("至少需要保留一个邮箱后缀");
-  await env.CACHE.put("CONFIG:app", JSON.stringify(next));
+  await kvPut(env, "CONFIG:app", JSON.stringify(next));
   return loadConfig(env);
 }
 
@@ -208,7 +212,7 @@ export async function listThreads(env, uid) {
         ORDER BY COALESCE(last_at, t.updated_at) DESC LIMIT 100`
     ).bind(uid).all();
     rows = results;
-    await env.CACHE.put(cacheKey, JSON.stringify(rows), { expirationTtl: THREAD_CACHE_TTL });
+    await kvPut(env, cacheKey, JSON.stringify(rows), { expirationTtl: THREAD_CACHE_TTL });
   }
 
   const memberMap = await membersOfMyThreads(env, uid);
@@ -275,7 +279,7 @@ export async function getRecentMessages(env, threadId) {
     "SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at DESC, id DESC LIMIT 80"
   ).bind(threadId).all();
   const rows = results.reverse();
-  await env.CACHE.put(key, JSON.stringify(rows), { expirationTtl: MSG_CACHE_TTL });
+  await kvPut(env, key, JSON.stringify(rows), { expirationTtl: MSG_CACHE_TTL });
   return rows;
 }
 
@@ -315,7 +319,7 @@ export async function markRead(env, threadId, uid) {
 /* ------------------------------ 杂项 ------------------------------ */
 
 export async function setPresence(env, uid) {
-  await env.CACHE.put(`PRESENCE:${uid}`, "1", { expirationTtl: 90 });
+  await kvPut(env, `PRESENCE:${uid}`, "1", { expirationTtl: PRESENCE_TTL });
 }
 
 export async function adminStats(env) {
