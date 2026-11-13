@@ -4,6 +4,7 @@ import {
   normalizeEmail, isEmailAllowed, signSession, verifySession,
   sessionCookie, clearCookie, issueOtp, consumeOtp, timingSafeEqual,
 } from "./auth.js";
+import { ADMIN_HTML } from "./admin-page.js";
 import {
   loadConfig, saveConfig, maskToken, sendMail, publicUser, getUserById,
   getUserByEmail, createUser, listUsers, isMember, listThreads, createThread,
@@ -26,10 +27,18 @@ const MAX_IMAGE = 10 * 1024 * 1024;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    // /admin 是独立后台页（不依赖校园邮箱登录），由 Worker 重写到静态 admin.html
+    // /admin 独立后台页：Worker 直接回传 HTML，不交给 Assets。
+    // 若重写到 /admin.html，Assets 的 html_handling 会把它 301 回 /admin，
+    // 形成无限重新导向（ERR_TOO_MANY_REDIRECTS）。内联返回则一次 200 到底。
     if (url.pathname === "/admin" || url.pathname === "/admin/") {
-      const target = new URL("/admin.html", url);
-      return env.ASSETS.fetch(new Request(target, request));
+      return new Response(ADMIN_HTML, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Frame-Options": "DENY",
+          "Referrer-Policy": "no-referrer",
+        },
+      });
     }
     if (!url.pathname.startsWith("/api")) {
       // 静态资源 / SPA fallback 交还 Assets binding
@@ -133,7 +142,9 @@ async function route(request, env, url) {
       user.role = "admin";
     }
     const { token } = await signSession(env, user.id);
-    return json({ ok: true, user: publicUser(user) }, 200, { "Set-Cookie": sessionCookie(token) });
+    return json({ ok: true, user: publicUser(user) }, 200, {
+      "Set-Cookie": sessionCookie(token, "user", isSecureRequest(url)),
+    });
   }
 
   // 未配置 R2 自定义域时的同源图片回源（配了自定义域则浏览器直连 CDN）
@@ -173,7 +184,13 @@ async function route(request, env, url) {
     }
     await env.CACHE.delete(rateKey);
     const { token } = await signSession(env, "admin-panel", "admin");
-    return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, "admin") });
+    // 登录响应直接带上 state：前端不必立刻再发一次带 session 的请求。
+    // KV 是最终一致，刚写入的 ADMINSESSION 可能还读不到，二次验证会被误判成「未登入」。
+    return json({
+      ok: true,
+      config: adminConfigView(cfg, env),
+      stats: await adminStats(env),
+    }, 200, { "Set-Cookie": sessionCookie(token, "admin", isSecureRequest(url)) });
   }
 
   if (pathname.startsWith("/api/admin/panel/")) {
@@ -321,6 +338,11 @@ async function readJson(request) {
   } catch {
     return {};
   }
+}
+
+/** 本地 wrangler dev 是 http，不能下发 Secure Cookie，否则浏览器不保存 */
+function isSecureRequest(url) {
+  return url.protocol === "https:" || ["localhost", "127.0.0.1"].includes(url.hostname);
 }
 
 /** /admin 后台会话 或 已登录的 admin 账号，两者皆可管理配置 */

@@ -130,6 +130,25 @@ POST /api/auth/otp/request 读到配置 → 发 6 位验证码 → 注册 / 登�
 - **存储**：R2 自定义公网地址
 - **状态卡**：邮件服务 / 注册验证码 / R2 / 后台密码 四项健康状态，加用户/会话/消息统计
 
+### 常见排错
+
+**Q：`/admin` 报「太多重新導向 / ERR_TOO_MANY_REDIRECTS」？**
+
+早期版本把 `/admin` 重写到静态 `/admin.html`，但 Workers Static Assets 默认会把 `/admin.html` 301 回 `/admin`，两者互跳形成死循环。**现已改为 Worker 直接回传后台 HTML**（`src/admin-page.js`），`/admin` 与 `/admin/` 都是一次 200，完全不经过 Assets，零重定向。重跑一次 Action 即可生效。
+
+**Q：进后台显示「未登入」，但后台不就是填 `ADMIN_PASSWORD` 的地方吗？**
+
+对，**后台登录卡填的就是 `ADMIN_PASSWORD` 本身**，不需要校园邮箱账号、也不用收验证码（否则会死锁：没配邮件 → 收不到码 → 进不去后台 → 配不了邮件）。看到「管理員密碼」输入框，填 GitHub **Secrets** 里那个值就行。
+
+若填了仍停在登录卡，按这个顺序查：
+
+1. `ADMIN_PASSWORD` 必须放在 `Settings → Secrets and variables → Actions → **Secrets**`（不是 Variables），然后**重跑 Action** —— secret 是在 `wrangler deploy` 之后写入 Worker 的，改了不重跑不会生效。现在 workflow 缺它会直接报错失败，不会静默部署一个进不去的后台。
+2. 登录接口返回 `503 尚未設定 ADMIN_PASSWORD` → 就是上一步没做；登录卡会显示黄色提示，状态卡「后台密码」显示「未配置」。
+3. 浏览器清一下该域名的 Cookie 再试。
+4. `SESSION_SECRET` 每次部署都变会让旧会话失效，请把它固定成一个长随机串。
+
+> 实现细节：登录响应会**直接带上 config / stats**，前端一次进场，不再立刻发第二个带 session 的请求；否则 KV 最终一致性可能让刚写入的 `ADMINSESSION` 还读不到，被误判成「未登入」。此外 `Secure` Cookie 会按访问协议自动开关，本地 `wrangler dev` 的 http 也能正常保存。
+
 ---
 
 ## 三、本地开发（可选）
@@ -227,9 +246,10 @@ schoolink/
 ├─ docs/preview.png               # 综合预览（含 /admin 后台）
 ├─ docs/preview-{hero,chat,login,admin,admin-login,mobile}.png
 ├─ src/index.js                   # 路由、鉴权、OTP 发信、上传、/admin API
+├─ src/admin-page.js              # /admin 后台 HTML（Worker 直接回传，避免 Assets 301 循环）
 ├─ src/auth.js                    # HMAC 会话（用户/后台两套）、OTP、后缀校验、恒定时间比较
 ├─ src/store.js                   # D1 / KV 数据访问层、热配置、sendMail
-├─ public/admin.html · admin.js · admin.css   # /admin 后台
+├─ public/admin.html（備用直鏈）· admin.js · admin.css   # /admin 後台
 ├─ public/index.html · style.css · app.js · logo.svg · favicon.svg
 └─ .dev.vars.example
 ```

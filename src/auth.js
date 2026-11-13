@@ -86,9 +86,9 @@ export async function verifySession(request, env, kind = "user") {
   return { uid: data.uid, jti: data.jti };
 }
 
-export function sessionCookie(token, kind = "user") {
+export function sessionCookie(token, kind = "user", secure = true) {
   const meta = SESSION_META[kind] || SESSION_META.user;
-  return `${meta.cookie}=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${meta.ttl}`;
+  return `${meta.cookie}=${encodeURIComponent(token)}; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Path=/; Max-Age=${meta.ttl}`;
 }
 
 export function clearCookie(kind = "user") {

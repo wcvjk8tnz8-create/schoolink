@@ -7,6 +7,7 @@ const LABEL = { "zh-CN": "简体", "zh-HK": "繁體", en: "EN" };
 const I18N = {
   "zh-CN": {
     console: "管理后台", tag: "ADMIN CONSOLE", loginSub: "用 ADMIN_PASSWORD 进入，配置注册验证码邮件。",
+    adminPwHint: "这里填的就是 GitHub Secret「ADMIN_PASSWORD」的值，不需要校园邮箱账号，也不用收验证码。",
     password: "管理员密码", passwordPh: "输入 ADMIN_PASSWORD", signIn: "进入后台", signOut: "退出",
     openChat: "返回聊天", wrong: "密码错误或未登录", noPw: "尚未设置 ADMIN_PASSWORD：请到 GitHub Secrets 新增后重跑 Action，本地则写进 .dev.vars。",
     pwNote: "密码只存在 Cloudflare Secret，不会写进仓库或返回给浏览器。",
@@ -28,6 +29,7 @@ const I18N = {
   },
   "zh-HK": {
     console: "管理後台", tag: "ADMIN CONSOLE", loginSub: "用 ADMIN_PASSWORD 進入，設定註冊驗證碼電郵。",
+    adminPwHint: "這裏填的就是 GitHub Secret「ADMIN_PASSWORD」的值，不需要校園電郵帳號，也不用收驗證碼。",
     password: "管理員密碼", passwordPh: "輸入 ADMIN_PASSWORD", signIn: "進入後台", signOut: "登出",
     openChat: "返回聊天", wrong: "密碼錯誤或未登入", noPw: "尚未設定 ADMIN_PASSWORD：請到 GitHub Secrets 新增後重跑 Action，本地則寫進 .dev.vars。",
     pwNote: "密碼只存在 Cloudflare Secret，不會寫進倉庫或返回給瀏覽器。",
@@ -49,6 +51,7 @@ const I18N = {
   },
   en: {
     console: "Admin console", tag: "ADMIN CONSOLE", loginSub: "Sign in with ADMIN_PASSWORD to configure sign-up codes.",
+    adminPwHint: "Enter the value of the GitHub Secret ADMIN_PASSWORD here — no campus email account or OTP needed.",
     password: "Admin password", passwordPh: "Enter ADMIN_PASSWORD", signIn: "Sign in", signOut: "Sign out",
     openChat: "Back to chat", wrong: "Wrong password or not signed in", noPw: "ADMIN_PASSWORD is not set: add it to GitHub Secrets and re-run the workflow (or .dev.vars locally).",
     pwNote: "The password lives only in a Cloudflare Secret — never in the repo, never returned to the browser.",
@@ -198,6 +201,7 @@ function renderLogin() {
     <img class="login-logo" src="/logo.svg" alt="">
     <h1>Schoolink · ${esc(t("console"))}</h1>
     <p class="sub">${esc(t("loginSub"))}</p>
+    <div class="admin-pw-hint">🔑 ${esc(t("adminPwHint"))}</div>
     ${state.publicCfg.adminPasswordSet === false ? `<div class="notice">⚠ ${esc(t("noPw"))}</div>` : ""}
     <div class="field"><label>${esc(t("password"))}</label>
       <input type="password" data-model="password" data-enter="login" value="${esc(state.form.password)}"
@@ -211,23 +215,35 @@ function renderLogin() {
   </div></div>`;
 }
 
-async function loadState() {
+async function loadState(retry = 1) {
   try {
     const r = await api("/api/admin/panel/state");
     state.config = r.config; state.stats = r.stats;
     state.authed = true; state.error = "";
     fillForm(r.config);
-  } catch {
+  } catch (e) {
+    // 刷新页面时 KV 白名单可能还没同步完，等一下重试一次
+    if (retry > 0) {
+      await new Promise((r) => setTimeout(r, 350));
+      return loadState(retry - 1);
+    }
     state.authed = false;
+    state.error = "";
   }
   render();
 }
 async function login() {
   state.error = "";
   try {
-    await post("/api/admin/panel/login", { password: state.form.password });
+    // 登录响应已带 config / stats，直接用它进场，不再二次验证 session
+    const r = await post("/api/admin/panel/login", { password: state.form.password });
     state.form.password = "";
-    await loadState();
+    state.config = r.config || {};
+    state.stats = r.stats || state.stats;
+    state.authed = true;
+    state.error = "";
+    fillForm(state.config);
+    render();
   } catch (e) { state.error = `${t("wrong")} · ${e.message}`; render(); }
 }
 async function save() {

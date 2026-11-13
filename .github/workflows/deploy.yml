@@ -67,10 +67,10 @@ jobs:
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::缺少 Variable：CLOUDFLARE_ACCOUNT_ID"; exit 1; }
           [ -n "$SESSION_SECRET" ] || { echo "::error::缺少 Secret：SESSION_SECRET（请填一段随机长字符串，否则每次部署会把所有人登出）"; exit 1; }
           if [ -z "$ADMIN_PASSWORD" ]; then
-            echo "::warning::未填 ADMIN_PASSWORD，/admin 后台将不可用；部署后到 /admin 配置邮件服务才能发送注册验证码"
-          else
-            echo "✓ ADMIN_PASSWORD 已设置，部署后可打开 /admin"
+            echo "::error::缺少 Secret：ADMIN_PASSWORD。没有它 /admin 无法登录，也就无法配置邮件服务发送注册验证码。请到 Settings → Secrets and variables → Actions → Secrets 新增（不是 Variables），再重跑本 workflow。"
+            exit 1
           fi
+          echo "✓ ADMIN_PASSWORD 已设置，部署后可打开 /admin"
           echo "✓ 环境变量齐备"
 
       - name: Provision D1 / KV / R2 + init schema
