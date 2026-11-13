@@ -1,14 +1,11 @@
 #!/usr/bin/env node
 /**
- * Schoolink · Cloudflare 资源幂等准备
+ * Schoolink · Cloudflare 资源幂等准备（GitHub Actions / 本地皆可）
  *
- * 由 GitHub Actions 调用，也可本地执行（需先导出 CLOUDFLARE_API_TOKEN、
- * CLOUDFLARE_ACCOUNT_ID 两个环境变量，凭据只放环境变量，不要写进文件）：
- *   node scripts/provision.mjs
- *
- * 规则：
- *  - D1 / KV / R2 先查再建；已存在直接复用，绝不重复 create（避免 Action 报 already exists 失败）
- *  - ENABLE_R2=false 时完全不碰 R2 API，也不写 r2_buckets 绑定（Worker 自动降级关闭图片功能）
+ *  - D1 / KV / R2 先查再建；已存在直接复用，绝不重复 create（避免 already exists 红灯）
+ *  - ENABLE_R2=false 时完全不碰 R2 API，也不写 r2_buckets 绑定
+ *  - 自动执行 schema.sql 建表（全部 IF NOT EXISTS，重跑安全）
+ *  - Durable Object 由 wrangler deploy 依据 migrations 建立，不需要 API 预建
  *  - 用「填的环境变量」现场生成 wrangler.jsonc，回填真实 database_id / kv id
  */
 import { writeFile, readFile } from "node:fs/promises";
@@ -17,7 +14,6 @@ import path from "node:path";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = process.env;
-
 const TOKEN = env.CLOUDFLARE_API_TOKEN;
 const ACCOUNT = env.CLOUDFLARE_ACCOUNT_ID;
 if (!TOKEN || !ACCOUNT) {
@@ -43,10 +39,7 @@ const log = (...a) => console.log("  ", ...a);
 async function cf(pathname, { method = "GET", body } = {}) {
   const res = await fetch(BASE + pathname, {
     method,
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = {};
@@ -54,25 +47,17 @@ async function cf(pathname, { method = "GET", body } = {}) {
   if (!data.success) {
     const e0 = (data.errors || [])[0] || {};
     const err = new Error(
-      `Cloudflare API ${method} ${pathname} → HTTP ${res.status} [${e0.code ?? "-"}] ${e0.message || JSON.stringify(data.errors || data)}`
+      `Cloudflare API ${method} ${pathname} → HTTP ${res.status} [${e0.code ?? "-"}] ${e0.message || JSON.stringify(data.errors || data)}`,
     );
-    err.status = res.status;
-    err.code = e0.code;
-    err.messageText = e0.message || "";
+    err.status = res.status; err.code = e0.code; err.messageText = e0.message || "";
     throw err;
   }
   return data.result;
 }
 
-const isExists = (e) =>
-  e.status === 409 ||
-  e.code === 10014 || e.code === 10048 ||
+const isExists = (e) => e.status === 409 || e.code === 10014 || e.code === 10048 ||
   /already exist|duplicate|already taken|name is not available/i.test(e.messageText || "");
 
-/**
- * 先 list → 有就复用；没有才 create；create 撞上「已存在」再 list 一次兜底。
- * skip=true 时连 list 都不调用（避免无权限 / 未开通 R2 导致整个 Action 失败）。
- */
 async function ensure({ label, list, find, create, skip = false }) {
   if (skip) { log(`SKIP   ${label}（已停用，不调用 API）`); return null; }
   let found = find(await list());
@@ -90,15 +75,12 @@ async function ensure({ label, list, find, create, skip = false }) {
   return found;
 }
 
-function asArray(x) {
-  if (Array.isArray(x)) return x;
-  if (Array.isArray(x?.buckets)) return x.buckets;
-  if (Array.isArray(x?.result)) return x.result;
-  return [];
-}
+const asArray = (x) => Array.isArray(x) ? x
+  : Array.isArray(x?.buckets) ? x.buckets
+  : Array.isArray(x?.result) ? x.result : [];
 
 console.log(`\n▶ Schoolink provision · account ${ACCOUNT.slice(0, 6)}…`);
-console.log(`  D1=${D1_NAME}  KV=${KV_TITLE}  R2=${ENABLE_R2 ? R2_NAME : "DISABLED"}\n`);
+console.log(`  D1=${D1_NAME}  KV=${KV_TITLE}  R2=${ENABLE_R2 ? R2_NAME : "DISABLED"}  DO=RealtimeHub\n`);
 
 let d1Id, kvId, r2Name = null;
 try {
@@ -128,25 +110,21 @@ try {
       });
       r2Name = bucket.name || R2_NAME;
     } catch (e) {
-      throw new Error(
-        `R2 處理失敗：${e.message}\n` +
-        `→ 若不需要圖片功能，把 GitHub Variable ENABLE_R2 設為 false 即可跳過；` +
-        `若已開通 R2，請確認 API Token 具備「Account: R2:Edit」權限。`
-      );
+      throw new Error(`R2 處理失敗：${e.message}\n→ 不需要附件功能就把 Variable ENABLE_R2 設為 false；` +
+        `若已開通 R2，請確認 API Token 具備「Account: R2:Edit」權限。`);
     }
   } else {
-    log("SKIP   R2 bucket（ENABLE_R2=false，Worker 圖片功能自動降級）");
+    log("SKIP   R2 bucket（ENABLE_R2=false，附件功能自動降級）");
   }
 } catch (e) {
   console.error("\n✗ Provision 失敗：", e.message, "\n");
   process.exit(1);
 }
 
-// 建表也一并自动完成（schema.sql 全部是 IF NOT EXISTS，重跑不會失敗）
+// 建表：schema.sql 全部 IF NOT EXISTS，重跑安全
 try {
   const schema = await readFile(path.join(ROOT, "schema.sql"), "utf8");
-  const statements = schema
-    .split(";")
+  const statements = schema.split(";")
     .map((s) => s.replace(/^\s*--.*$/gm, "").trim())
     .filter((s) => s && !/^PRAGMA\b/i.test(s));
   for (const sql of statements) {
@@ -161,34 +139,28 @@ try {
 const config = {
   $schema: "node_modules/wrangler/config-schema.json",
   name: WORKER_NAME,
-  main: "src/index.js",
+  main: "worker/index.ts",
   compatibility_date: "2026-11-13",
   compatibility_flags: ["nodejs_compat"],
   observability: { enabled: true },
   assets: {
-    directory: "./public",
+    directory: "./out",
     binding: "ASSETS",
+    html_handling: "none",
     not_found_handling: "single-page-application",
     run_worker_first: ["/api/*", "/api", "/admin", "/admin/"],
   },
   d1_databases: [{ binding: "DB", database_name: D1_NAME, database_id: d1Id }],
   kv_namespaces: [{ binding: "CACHE", id: kvId }],
   ...(r2Name ? { r2_buckets: [{ binding: "IMAGES", bucket_name: r2Name }] } : {}),
-  vars: {
-    ALLOWED_EMAIL_DOMAINS,
-    ADMIN_EMAILS,
-    SCHOOL_NAME,
-    ALLOW_DEV_OTP,
-    R2_PUBLIC_BASE_URL,
-  },
-  ...(CUSTOM_DOMAIN ? {
-    routes: [{ pattern: CUSTOM_DOMAIN, custom_domain: true }],
-    workers_dev: false,
-  } : {}),
+  durable_objects: { bindings: [{ name: "REALTIME", class_name: "RealtimeHub" }] },
+  migrations: [{ tag: "v1", new_sqlite_classes: ["RealtimeHub"] }],
+  vars: { ALLOWED_EMAIL_DOMAINS, ADMIN_EMAILS, SCHOOL_NAME, ALLOW_DEV_OTP, R2_PUBLIC_BASE_URL },
+  ...(CUSTOM_DOMAIN ? { routes: [{ pattern: CUSTOM_DOMAIN, custom_domain: true }], workers_dev: false } : {}),
 };
 
-const header = `// ⚠️ 由 GitHub Actions 的 scripts/provision.mjs 依「環境變數」自動生成，請勿手動改這個檔案。
-// 要改設定：GitHub → Settings → Secrets and variables → Actions → Variables / Secrets，再重跑 workflow。
+const header = `// ⚠️ 由 GitHub Actions 的 scripts/provision.mjs 依「環境變數」自動生成，請勿手動改。
+// 要改設定：GitHub → Settings → Secrets and variables → Actions，再重跑 workflow。
 // 倉庫內的 wrangler.jsonc 只是本地開發範本；CI 會覆寫它，不會提交回去。
 `;
 await writeFile(path.join(ROOT, "wrangler.jsonc"), header + JSON.stringify(config, null, 2) + "\n", "utf8");
@@ -197,5 +169,6 @@ console.log("\n✓ wrangler.jsonc 已生成");
 console.log(`  D1 id : ${d1Id}`);
 console.log(`  KV id : ${kvId}`);
 console.log(`  R2    : ${r2Name || "disabled"}`);
+console.log("  DO    : RealtimeHub (由 wrangler deploy migrations 建立)");
 if (CUSTOM_DOMAIN) console.log(`  Domain: ${CUSTOM_DOMAIN}`);
 console.log("");

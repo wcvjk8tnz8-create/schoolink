@@ -1,0 +1,37 @@
+{
+  "id": "/",
+  "name": "Schoolink · 校園即時通訊",
+  "short_name": "Schoolink",
+  "description": "為校園而生的即時聊天工具 — 即時訊息、群組、語音、圖片與檔案。",
+  "lang": "zh-HK",
+  "dir": "auto",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#111113",
+  "theme_color": "#111113",
+  "categories": ["education", "social", "communication"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "shortcuts": [
+    {
+      "name": "新聊天 / New chat",
+      "short_name": "新聊天",
+      "url": "/?action=new-chat",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "管理後台 / Admin",
+      "short_name": "Admin",
+      "url": "/admin",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
+}

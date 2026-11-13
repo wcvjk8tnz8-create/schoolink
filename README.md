@@ -1,257 +1,189 @@
-# Schoolink 🍀
+# 🍀 Schoolink · TypeScript + Next.js 16 · Cloudflare Workers
 
-![Schoolink 预览](docs/preview.png)
+> 校园即时通讯工具。界面是 **Codex 的深色工作台 × WhatsApp 的气泡聊天**，中间有一只会眨眼、会微笑的四叶草，下面按时间显示 `早上好, 201A6000`。
 
-一个部署在 **Cloudflare Workers** 上的校园聊天工具。界面是 **Codex 深色工作台 × WhatsApp 对话** 的混合体：左边 Codex 风格的分组会话列表，右边 WhatsApp 风格的聊天气泡；空态正中间是一朵会微笑的四叶草，下面按时间问候（例如 `早上好, 201A6000`）。支持 **简体中文 / 繁體中文 / English** 即时切换。
-
-仓库：<https://github.com/wcvjk8tnz8-create/schoolink>
-
-```
-Workers + Static Assets  →  前端单页 + 全部 API（同一个域名，无需 Pages）
-D1                       →  账号数据 + 聊天数据（users / threads / thread_members / messages）
-KV                       →  缓存层：会话白名单、验证码、最近消息缓存、在线状态、管理员热配置
-R2 (Workers 绑定)         →  图片对象；可选，关闭后图片功能自动降级
-```
+v2 用 **TypeScript 全量重写**：前端 Next.js 16 静态导出 + React 19 + Motion，后端仍是单个 Cloudflare Worker，消息改成 **Durable Objects + WebSocket 真·即时推送**，可安装成 PWA。
 
 ---
 
-## 一、部署：填环境变量 → 跑一次 Action
+## 一、架构
 
-整套部署已经做进 `.github/workflows/deploy.yml`。**不用在本地装 wrangler、不用手敲 create 命令**，D1 / KV / R2 和建表全部由 `scripts/provision.mjs` 在 CI 里自动完成。
+```
+浏览器 (Next.js 16 / React 19 / TS / Motion / PWA)
+   │  静态资源免费走 Workers Static Assets（边缘、零冷启动）
+   │  /api/*  ──▶ Worker（TypeScript）
+   │  /api/ws ──▶ Durable Object「RealtimeHub」WebSocket Hibernation
+   ▼
+┌──────────────────────────────────────────────────────┐
+│ D1       账号、会话、消息、回应、星标（持久化）        │
+│ KV       会话白名单、OTP、热配置、缓存、在线心跳       │
+│ R2       图片 / 语音 / 文件（可选，不启用就整体降级）  │
+│ DO       每个用户一个实时信箱，空闲可休眠，连接不断    │
+└──────────────────────────────────────────────────────┘
+```
 
-### 1. 在 GitHub 填变量
+**为什么 Next.js 用 `output: "export"`**：这是登录后的私有实时应用，所有数据都来自 API / WebSocket，SSR、ISR、Server Actions 没有意义，还会引入缓存一致性问题。静态导出后 `out/` 直接交给 Static Assets，只有 `/api/*` 和 `/admin` 进 Worker —— 边缘静态请求免费、无限量、无冷启动。`/admin` 由 Worker 重写到 `/index.html`（不重定向），彻底避开 trailing-slash 301 循环。
 
-`Settings → Secrets and variables → Actions`：
+**为什么是「每用户一个 DO」而不是「每会话一个」**：后者在用户没打开某会话时收不到那个会话的新消息，还得再维护一条全局连接。单信箱模型客户端只保持 **1 条 WebSocket**，切会话不重连，Worker 把事件扇出到相关成员即可。客户端 WS 只能发 `ping`，所有内容变更都必须走 HTTP API 鉴权 + 写 D1 后才广播，伪造不了消息。
 
-**Secrets**（3 个必填，2 个可选）
+---
+
+## 二、部署（填环境变量 → 点一下）
+
+`Settings → Secrets and variables → Actions`
+
+### Secrets（必填 ✅ / 可选）
 
 | 名称 | 必填 | 说明 |
 |---|---|---|
-| `CLOUDFLARE_API_TOKEN` | ✅ | Cloudflare API Token，权限见下方 |
-| `SESSION_SECRET` | ✅ | 一长串随机字符串（如 `openssl rand -hex 32`）。**必须固定**，否则每次部署都会把所有人登出 |
-| `ADMIN_PASSWORD` | ✅ | **`/admin` 后台密码**。只作为 Worker Secret 写入，绝不进 `wrangler vars` 或仓库 |
-| `RESEND_API_KEY` | ⬜ | 邮件服务兜底。不填也没关系，部署后到 `/admin` 网页填即可 |
-| `RESEND_FROM` | ⬜ | 例 `Schoolink <noreply@your-domain.com>`；同样可在 `/admin` 覆盖 |
+| `CLOUDFLARE_API_TOKEN` | ✅ | 见下方一键创建链接 |
+| `CLOUDFLARE_ACCOUNT_ID` | ✅ | 建议放 **Variables**（`if` 判断需要它） |
+| `SESSION_SECRET` | ✅ | `openssl rand -hex 32`。**固定住**，改了会把所有人登出 |
+| `ADMIN_PASSWORD` | ✅ | `/admin` 登录密码。没填 workflow 会直接 fail |
+| `RESEND_API_KEY` | 可选 | 邮件兜底；也可以部署后到 `/admin` 填 |
+| `RESEND_FROM` | 可选 | 例如 `Schoolink <noreply@plkshs.edu.hk>` |
 
-**Variables**（都有默认值，按需覆盖）
+### Variables（都有默认值）
 
 | 名称 | 默认 | 说明 |
 |---|---|---|
-| `CLOUDFLARE_ACCOUNT_ID` | — | **建议填**，填了之后 `push` 到 main 也会自动部署；不填只能手动触发 |
-| `ALLOWED_EMAIL_DOMAINS` | `@plkshs.edu.hk` | 允许的校园邮箱后缀，逗号分隔 |
-| `ADMIN_EMAILS` | 自动推导 | 管理员邮箱，逗号分隔 |
-| `SCHOOL_NAME` | `Schoolink 校園` | 显示名称 |
-| `ENABLE_R2` | `true` | **设成 `false` 就完全跳过 R2** |
-| `R2_BUCKET_NAME` | `schoolink-images` | R2 bucket 名 |
-| `R2_PUBLIC_BASE_URL` | 空 | R2 自定义域，例 `https://img.plkshs.edu.hk`；留空走 `/api/file` 同源回源 |
-| `WORKER_NAME` | `schoolink` | Worker 名 |
-| `D1_DATABASE_NAME` | `schoolink-db` | D1 库名 |
-| `KV_NAMESPACE_TITLE` | `schoolink-cache` | KV 命名空间标题 |
-| `ALLOW_DEV_OTP` | `0` | 生产保持 `0` |
-| `CUSTOM_DOMAIN` | 空 | 例 `chat.plkshs.edu.hk`，填了会自动加自定义域路由 |
+| `ALLOWED_EMAIL_DOMAINS` | `@plkshs.edu.hk` | 逗号分隔可填多个 |
+| `ADMIN_EMAILS` | 自动推导 | 逗号分隔 |
+| `SCHOOL_NAME` | `保良局蕭漢森小學` | 验证码邮件里显示，可在 `/admin` 改 |
+| `ENABLE_R2` | `true` | **`false` = 完全不调用 R2 API**，附件功能自动隐藏 |
+| `R2_BUCKET_NAME` | `schoolink-images` | |
+| `R2_PUBLIC_BASE_URL` | 空 | 自定义公网地址；留空走同源 `/api/file/*` 回源 |
+| `CUSTOM_DOMAIN` | 空 | 例如 `chat.plkshs.edu.hk`（需该域名在 CF 上） |
+| `ALLOW_DEV_OTP` | `0` | 仅本地开发用，生产保持 `0` |
+| `WORKER_NAME` / `D1_DATABASE_NAME` / `KV_NAMESPACE_TITLE` | `schoolink*` | 资源命名 |
 
-> 凭据只放 Secrets / Variables，**绝不写进代码或提交记录**。
+然后 **`Actions → Deploy Schoolink → Run workflow`**（或 push 到 main）。CI 会：
 
-**API Token 权限**（Cloudflare → My Profile → API Tokens → Create Custom Token）：
-`Account · Workers Scripts: Edit`、`Account · D1: Edit`、`Account · Workers KV Storage: Edit`、`Account · Account Settings: Read`；
-`ENABLE_R2=true` 再加 `Account · R2: Edit`；用了 `CUSTOM_DOMAIN` 再加 `Zone · Workers Routes: Edit`。
+1. `npm ci`（Node 22 —— wrangler 4.161 要求 ≥22.12）
+2. `scripts/provision.mjs`：**先 list 再 create**，已存在的 D1 / KV / R2 直接复用；`ENABLE_R2=false` 时完全不碰 R2；撞上 `already exists` 再 list 兜底，不算失败
+3. 执行 `schema.sql` 建表（全部 `IF NOT EXISTS`，重跑安全）
+4. `npm run build` → `out/`
+5. `wrangler deploy` —— **Durable Object 由 migrations 自动建立，不需要 API 预建**
+6. 写入 Worker Secrets
 
-### 2. 跑 Action
+### Cloudflare API Token 一键创建链接
 
-`Actions → Deploy Schoolink → Run workflow`。流程依次是：
+**完整版（含 R2）**
+```
+https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22d1%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_r2%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22workers_routes%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=%2A&zoneId=all&name=Schoolink+Deploy+Token
+```
+不需要 R2 就从权限里去掉 `workers_r2`。创建时在 summary 页核对 6 项权限；有多个账号的话把 `accountId=*` 收窄到目标账号。
 
-1. `scripts/provision.mjs` 调 Cloudflare API 幂等准备资源并**自动执行 `schema.sql` 建表**
-2. 现场生成 `wrangler.jsonc`，回填真实的 D1 `database_id` / KV `id` 和所有 Variables
-3. `wrangler deploy` 部署
-4. 写入 Worker secrets（云端即时生效）
+### 部署后第一件事
 
-跑完在 job Summary 里能看到 Worker 名、D1 / KV / R2 状态和访问地址。
+打开 **`/admin`** → 输入 `ADMIN_PASSWORD` → 填 **邮件 API Token** + **发件邮箱 From** → 点「发送测试」→ 保存。
 
-### 3. 关于 R2（重点）
+这里填的是 **Resend 的 `re_...` Token**，和 GitHub 里那个 `CLOUDFLARE_API_TOKEN` 完全是两回事。配置写进 KV，即时生效、不用重新部署；Token 只回传掩码 `re_••••••••3f9a`。发件域名要先在 Resend 验证通过。
 
-`wrangler r2 bucket create` 遇到已存在的 bucket 会直接报错，让整个 Action 红灯。脚本这样处理：
-
-- **先查再建**：D1 / KV / R2 一律先 list，存在就复用，**绝不重复 create**
-- **竞态兜底**：万一 create 撞上 `already exists`，再 list 一次拿回资源继续，不算失败
-- **`ENABLE_R2=false` 时完全不碰 R2 API**：不 list、不 create、不写 `r2_buckets` 绑定。这样没开通 R2、Token 没有 R2 权限、或单纯不想要图片功能，都不会失败
-- R2 关闭后：前端自动隐藏上传按钮，上传 / 图片回源接口返回 503 友好提示，文字聊天、账号、群组、管理员配置一切正常
-
-配了 R2 后想走自定义公网地址：Cloudflare Dashboard → R2 → bucket → Settings → Custom Domains 绑定域名，再把 `https://img.xxx` 填进 `R2_PUBLIC_BASE_URL` 重跑 Action（或者直接在网页 ⚙ 设置里改，即时生效）。
-
-### 4. 部署完之后：进 /admin 配好注册验证码
-
-1. 打开 `https://<你的 Worker 域名>/admin`，用 `ADMIN_PASSWORD` 登录（**不需要校园邮箱账号**，避免"还没配邮件 → 收不到验证码 → 进不去后台"的死锁）
-2. 填 **邮件 API Token**（Resend 的 `re_...`）和 **发件邮箱 / From**（已验证域名的地址）
-3. 点「发送测试」确认能收到 → 点「保存设置」
-4. 之后注册 / 登录就会真正发送 6 位验证码；首次登录自动建号并加入「校园广场 / School Plaza」
-
-同一页还能改邮箱后缀、管理员邮箱、学校名、R2 公网地址，**全部即时生效，不用重跑 Action、不用重新部署**。想换域名或后缀默认值，改 Variables 再 Run workflow 一次即可。
-
-> `push` 到 main 也会自动部署，但没填 `CLOUDFLARE_ACCOUNT_ID` 时 job 会自动跳过，所以第一次推代码不会红灯；改 README 或 docs 不会触发部署。
+> `/admin` **不需要校园邮箱账号**，否则会死锁：没配邮件 → 收不到验证码 → 进不去后台 → 配不了邮件。
 
 ---
 
-## 二、/admin 后台与注册验证码
+## 三、功能清单
 
-### 为什么要有独立后台
+### WhatsApp 该有的（都做了）
 
-注册验证码依赖邮件服务，但旧流程要求「先在 GitHub Secrets 填 `RESEND_API_KEY`」才能发信。现在把邮件配置搬到网页：
-
-> **两个 API Token 别搞混**：`CLOUDFLARE_API_TOKEN` 只在 GitHub Secrets 里给 Action 用（自动建 D1/KV/R2）；`/admin` 里填的是**邮件 API Token**（Resend 的 `re_...`），专门用来发注册验证码。
-
-```
-GitHub Secrets 只留 3 个：CLOUDFLARE_API_TOKEN / SESSION_SECRET / ADMIN_PASSWORD
-        ↓ Action 部署（自动建 D1 / KV / R2 + 建表 + 写 secrets）
-打开 /admin  →  用 ADMIN_PASSWORD 登录
-        ↓
-填 邮件 API Token + 发件邮箱  →  发送测试  →  保存
-        ↓ 写入 KV CONFIG:app
-POST /api/auth/otp/request 读到配置 → 发 6 位验证码 → 注册 / 登录可用
-```
-
-优先级：**`/admin` 网页配置 > Worker Secret `RESEND_API_KEY` > 本地 dev OTP**。后台里点「清除」即可回退到 Secret。
-
-### 安全设计
-
-| 项 | 做法 |
+| | |
 |---|---|
-| `ADMIN_PASSWORD` | 只存 Cloudflare Worker Secret；不进 `wrangler.jsonc`、不进 git、不返回给浏览器 |
-| 后台会话 | 独立 `schoolink_admin` Cookie，HMAC-SHA256 签名 + KV 白名单，2 小时过期，登出即失效 |
-| 密码校验 | 恒定时间比较；同 IP 连续失败 5 次锁 10 分钟 |
-| Token 回显 | 只回传掩码 `re_••••••••3f9a`，明文只在服务端 `sendMail` 里用 |
-| CSRF | 所有写请求校验同源 Origin |
+| 💬 私聊 / 群组 / 全校广场（注册自动加入） | 文字、图片、语音、文件（≤20MB） |
+| ⚡ **即时送达**：DO + WebSocket，非轮询 | 断线指数退避重连（1s→30s） |
+| ✓✓ 已读回执（蓝色 = 全部人已读） | 🟢 在线 / 最后上线 |
+| ⌨️ 正在输入指示 | ↩ 回复引用（点击跳到原消息） |
+| ↪ 转发（带「已转发」标记） | ✎ 编辑（15 分钟内）/ 🗑 删除 |
+| ☺ Emoji 表情回应（8 种，去重计数） | ⭐ 星标消息 + 星标列表 |
+| 📌 置顶 / 🔕 静音 / 📥 归档 | 🔴 未读数 + PWA 桌面角标 |
+| 🔍 搜索消息（全局 / 当前会话，`⌘K`） | 📷 图片灯箱、懒加载、下载 |
+| 🎤 语音录制（波形动画 + 时长） | 📎 文件卡片、群公告、群名/头像 |
+| 👥 加成员 / 退群 | 🧾 日期分隔、会话预览、草稿 |
 
-> 网页配置存在 KV，Cloudflare 账号内可见。若要最高保密：把 Token 放 GitHub Secret `RESEND_API_KEY`，并在 `/admin` 点「清除」回退。
+### 加分的
 
-### 后台能改什么
+- **离线队列**：发送失败的消息存 localStorage，恢复网络自动重发；乐观 UI 先上屏
+- **@提及**：群里打 `@` 自动联想成员
+- **三语**：简体 / 繁體 / EN 全量切换，问候语跟着变（`早晨` / `Good morning`）
+- **主题**：深 / 浅 / 跟随系统，用 View Transition 做平滑换肤
+- **问候语**：`早上好, 201A6000`，按时段变化
+- **🍀 四叶草**：渐变四叶 + 眨眼 `>` + 微笑嘴 + 腮红，弹簧入场、浮动、定时眨眼
+- **PWA**：可安装到桌面 / 主屏，独立窗口、离线外壳、桌面角标、快捷方式（新聊天 / 后台）、maskable 图标
+- **管理员**：热改邮箱后缀 / 管理员 / 校名 / R2 地址、测试发信、查看统计、**停用账号并强制下线**、Token 掩码、密码限流（5 次锁 10 分钟）
+- **安全**：HMAC 签名会话（HttpOnly + Secure + SameSite）、KV 白名单即时吊销、同源 Origin 校验、所有会话/消息接口校验 `thread_members`、R2 回源需登录、上传白名单 MIME、SVG 拒绝
 
-- **邮件**：API Token、发件邮箱 From、API 地址（默认 `https://api.resend.com`，可换兼容服务）、一键测试发信
-- **校园**：允许邮箱后缀、管理员邮箱、学校名称
-- **存储**：R2 自定义公网地址
-- **状态卡**：邮件服务 / 注册验证码 / R2 / 后台密码 四项健康状态，加用户/会话/消息统计
+### 🎬 动画（每一处都做了）
 
-### 常见排错
+Motion 14 驱动：splash 进度条、四叶草弹簧入场/浮动/眨眼、视图切换淡入缩放、会话列表 stagger、筛选 chip 的 `layoutId` 滑动、气泡入场 + hover 抬升、未读徽章弹跳、消息菜单/表情面板 spring、弹窗 spring、回复条高度展开、波形录音、typing 三点、Toast、按钮 hover/tap、图片灯箱缩放、已读双勾渐显。
 
-**Q：`/admin` 报「太多重新導向 / ERR_TOO_MANY_REDIRECTS」？**
+**尊重系统设置**：`prefers-reduced-motion: reduce` 时全部降级为瞬时。
 
-早期版本把 `/admin` 重写到静态 `/admin.html`，但 Workers Static Assets 默认会把 `/admin.html` 301 回 `/admin`，两者互跳形成死循环。**现已改为 Worker 直接回传后台 HTML**（`src/admin-page.js`），`/admin` 与 `/admin/` 都是一次 200，完全不经过 Assets，零重定向。重跑一次 Action 即可生效。
+### 没加的，以及为什么
 
-**Q：进后台显示「未登入」，但后台不就是填 `ADMIN_PASSWORD` 的地方吗？**
-
-对，**后台登录卡填的就是 `ADMIN_PASSWORD` 本身**，不需要校园邮箱账号、也不用收验证码（否则会死锁：没配邮件 → 收不到码 → 进不去后台 → 配不了邮件）。看到「管理員密碼」输入框，填 GitHub **Secrets** 里那个值就行。
-
-若填了仍停在登录卡，按这个顺序查：
-
-1. `ADMIN_PASSWORD` 必须放在 `Settings → Secrets and variables → Actions → **Secrets**`（不是 Variables），然后**重跑 Action** —— secret 是在 `wrangler deploy` 之后写入 Worker 的，改了不重跑不会生效。现在 workflow 缺它会直接报错失败，不会静默部署一个进不去的后台。
-2. 登录接口返回 `503 尚未設定 ADMIN_PASSWORD` → 就是上一步没做；登录卡会显示黄色提示，状态卡「后台密码」显示「未配置」。
-3. 浏览器清一下该域名的 Cookie 再试。
-4. `SESSION_SECRET` 每次部署都变会让旧会话失效，请把它固定成一个长随机串。
-
-> 实现细节：登录响应会**直接带上 config / stats**，前端一次进场，不再立刻发第二个带 session 的请求；否则 KV 最终一致性可能让刚写入的 `ADMINSESSION` 还读不到，被误判成「未登入」。此外 `Secure` Cookie 会按访问协议自动开关，本地 `wrangler dev` 的 http 也能正常保存。
+- **端到端加密**：与服务端全文搜索、转发、管理员审计直接冲突；校园场景也需要可追溯。真要做应另起一套客户端密钥架构，不是「顺手加」。
+- **语音/视频通话**：需要 WebRTC 信令 + TURN 中继，在 Workers 上成本与复杂度都不合理。
+- **Stories / 24h 动态**：不是聊天核心，还要额外的存储与定时清理。
+- **位置共享、支付、频道、AI 机器人**：校园工具用不上，徒增攻击面。
+- **Web Push 离线推送**：目前是「在线即时 + 打开 App 后角标」，没做 VAPID 订阅；如果你们需要锁屏推送，这是一个独立的小迭代。
 
 ---
 
-## 三、本地开发（可选）
+## 四、本地开发
+
+需要 **Node ≥ 22.12**。
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars      # 填 ADMIN_PASSWORD；本地可把 ALLOW_DEV_OTP 设为 1
-# 在 .dev.vars 里填 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID
-# 启动后打开 http://localhost:8787/admin 即可配置邮件服务
-node scripts/provision.mjs          # 也可本地跑：自动建资源 + 生成配置 + 建表（作用于线上账号）
-npm run dev                        # 或只跑本地模拟：npm run db:local && npm run dev
+cp .dev.vars.example .dev.vars      # 填 SESSION_SECRET / ADMIN_PASSWORD
+wrangler d1 create schoolink-db
+wrangler kv namespace create schoolink-cache
+# 把 ID 填进 wrangler.jsonc
+wrangler d1 execute schoolink-db --local --file=schema.sql
+npm run build          # 产出 out/
+wrangler dev           # 会同时跑 Worker + 静态资源 + DO
 ```
 
-`wrangler.jsonc` 在仓库里只是模板（D1 / KV id 为占位符），CI 会覆写它但不会提交回去。
+`npm run typecheck` 分别检查前端（`tsconfig.json`）和 Worker（`worker/tsconfig.json`，用 `@cloudflare/workers-types`）。
 
 ---
 
-## 四、功能对照
+## 五、排错
 
-| 需求 | 实现 |
+| 现象 | 原因 / 处理 |
 |---|---|
-| 注册发送验证码 | 校园邮箱 + 6 位 OTP（KV 存 10 分钟、55 秒限流），邮件由 `/admin` 配置的 API Token + 发件邮箱发出；未配置时登录页直接引导去 `/admin` |
-| `/admin` 后台 | `ADMIN_PASSWORD` 独立登录，配置邮件 API Token / 发件邮箱 / 后缀 / 管理员 / R2 地址，可一键发测试信 |
-| 管理员配置邮箱后缀 | ⚙ 设置或 `/admin` 改 `允许的邮箱后缀`，写进 KV `CONFIG:app`，即时生效；Variables 只是初始兜底。注册/发码严格按 `@` 后缀匹配 |
-| 图片走 R2 | `POST /api/upload` → `env.IMAGES.put()`，key 形如 `images/2026/11/<uuid>.png`，返回自定义域 URL；`GET /api/file/*` 兜底回源；R2 关闭则整体降级 |
-| D1 + KV 分工 | 账号与聊天全部落 D1；KV 只做缓存 / 会话 / OTP / 在线心跳 / 热配置 |
-| Codex × WhatsApp 界面 | 侧栏「置顶 / 私聊 / 群组」分组 + 筛选 chips + 底部状态条；右侧日期胶囊、气泡、双勾已读、壁纸水印、输入框 |
-| 中间四叶草微笑 | `public/logo.svg`，紫→蓝渐变六圆叠成四叶草，白色 `>` 眨眼 + 上弯微笑嘴；带轻微浮动动画 |
-| 按时间问候 | `早上好, 201A6000` / `早晨, 201A6000` / `Good morning, 201A6000`，学号取账号 `student_id` |
-| 中英文切换 | 简 / 繁 / EN 三档，存 `localStorage`，全站文案即时重渲染 |
-
-时段规则（浏览器本地时间）：
-
-| 时间 | 简体 | 繁體 | English |
-|---|---|---|---|
-| 05:00–11:59 | 早上好 | 早晨 | Good morning |
-| 12:00–17:59 | 下午好 | 午安 | Good afternoon |
-| 18:00–22:59 | 晚上好 | 晚上好 | Good evening |
-| 23:00–04:59 | 夜深了 | 夜深了 | Still up? |
+| `KV PUT failed: 400 Invalid expiration_ttl of 55` | KV 的 `expirationTtl` 必须是整数秒且 **≥ 60**。所有带 TTL 的写入统一走 `worker/kv.ts` 的 `kvPut()` 自动 clamp；缓存设 60s，但写入时主动 `delete` 缓存，不会看到旧数据。见到这个错说明有旧版 Worker 在跑，重跑 Action。 |
+| `/admin` 提示「太多重新導向」 | 旧版本把 `/admin` 重写到 `/admin.html` 又被 Assets 301 回来。v2 由 Worker 回传 `/index.html`，**不做重定向**，不会再出现。 |
+| 后台登录后显示「未登入」 | KV 最终一致：登录响应已直接带上 config/stats，不需立刻二次验证；前端另有 401 延迟重试。 |
+| `npm ci` 报 engine 警告 | 本地 Node 要 ≥22.12；CI 已固定 `node-version: 22`。 |
+| R2 报 `already exists` 或权限错 | 先确认 Token 有 `Workers R2:Edit`；不需要附件就把 Variable `ENABLE_R2=false`，脚本会完全跳过 R2 API。 |
+| 注册收不到验证码 | `/admin` 没配邮件服务；或发件域名未在 Resend 验证。先在后台点「发送测试」。 |
+| 消息不即时 | 看顶部连接条：`connecting / reconnecting / offline`。WS 断线时前端有 15s 兜底同步，不会丢消息。 |
 
 ---
 
-## 五、登录流程
+## 六、目录
 
-1. 输入校园邮箱 → `POST /api/auth/otp/request`：先校验后缀，再限流（60 秒一次，KV TTL 下限），生成 6 位验证码存 KV（10 分钟）。
-2. 邮件配置优先读 `/admin` 存在 KV 的设置，其次回退 Worker Secret `RESEND_API_KEY`，用 `sendMail()` 发出 6 位码；本地 `ALLOW_DEV_OTP=1` 时直接回填；三者都没配会返回 503 并提示管理员去 `/admin`，不会静默放行。
-3. `POST /api/auth/otp/verify` → 首次登录自动建号（学号 + 显示名），并加入默认群组。
-4. 签发 HMAC-SHA256 会话 token（`HttpOnly / Secure / SameSite=Lax` Cookie，30 天），同时在 KV 存白名单，登出即失效。
-5. 所有写接口校验同源 Origin；会话列表、消息接口都校验 `thread_members` 成员身份。
-
----
-
-## 六、API 一览
-
-| Method | Path | 说明 |
-|---|---|---|
-| GET | `/api/config` | 公开配置（后缀、R2 地址/是否启用、学校名、邮件是否已配置、后台密码是否已设） |
-| POST | `/api/admin/panel/login` / `logout` | `/admin` 用 `ADMIN_PASSWORD` 登录 / 登出，签发独立 2 小时会话 |
-| GET | `/api/admin/panel/state` | 后台状态：配置（Token 只给掩码）+ 用户/会话/消息统计 |
-| POST | `/api/admin/panel/config` | 热更新邮件 Token / From / API 地址 / 后缀 / 管理员 / 校名 / R2 地址 |
-| POST | `/api/admin/panel/test-mail` | 用当前配置发一封测试验证码邮件 |
-| POST | `/api/auth/otp/request` / `verify` | 验证码登录 |
-| GET | `/api/me` · POST `/api/logout` | 当前用户 / 登出 |
-| GET | `/api/users` · POST `/api/presence` | 同学列表 / 在线心跳 |
-| GET/POST | `/api/threads` | 会话列表 / 发起私聊或建群 |
-| GET/POST | `/api/threads/:id/messages` | 最近 80 条（KV 缓存 60s，写入即主动失效）/ 发消息；`?after=` 走 D1 增量 |
-| POST | `/api/threads/:id/read` | 清未读 |
-| POST | `/api/upload` | 图片写 R2，≤10MB（R2 关闭时 503） |
-| GET | `/api/file/*` | 未配自定义域时的图片回源 |
-| GET/POST | `/api/admin/config` | 管理员读取 / 热更新配置 + 数据量统计 |
-
-前端每 2.5 秒增量拉消息、9 秒刷会话列表、30 秒报在线，不依赖 WebSocket 或 Durable Objects。
+```
+app/                     Next.js App Router（layout / page / globals.css）
+components/              App, Login, Admin, Chat, Sidebar, ChatPane,
+                         MessageBubble, Composer, Modals, Logo, ui
+lib/                     types.ts / i18n.ts / api.ts / utils.ts / store.ts (zustand)
+worker/                  index.ts（路由）· store.ts（D1/KV）· auth.ts
+                         chat-room.ts（DO）· kv.ts · util.ts · env.d.ts · tsconfig.json
+public/                  manifest.webmanifest · sw.js · offline.html
+                         logo.svg · favicon.svg · icons/*.png
+schema.sql               D1 建表（幂等）
+scripts/                 provision.mjs（CF 资源）· make-icons.py（PWA 图标）
+.github/workflows/       deploy.yml
+```
 
 ---
 
 ## 七、上线前建议
 
-- **实时性**：现在是轮询。要真·推送可把消息接口换成 Durable Objects + WebSocket，前端逻辑不用动。
-- **KV 最终一致性**：会话白名单与热配置在边缘可能有秒级延迟；如需严格即时吊销，把 session 表挪到 D1。
-- **KV TTL 下限 60 秒**：`expirationTtl` 必须是整数秒且 ≥ 60，写 55 / 15 / 5 会直接 400。所有带 TTL 的写入统一走 `src/kv.js` 的 `kvPut()` 自动 clamp；会话列表/消息缓存设为 60 秒，但发消息、建会话、标记已读都会主动 `delete` 缓存，所以不会看到旧数据。若见到 `KV PUT failed: 400 Invalid expiration_ttl of N`，说明有旧版本 Worker 在跑，重跑一次 Action 即可。
-- **邮件**：生产必须配好邮件服务（`/admin` 网页配置或 Secret `RESEND_API_KEY` 二选一），否则注册拿不到验证码；发件域名需在 Resend 验证通过。
-- **后台密码**：`ADMIN_PASSWORD` 要够长且只放 Secret；连续 5 次输错会锁 10 分钟。
-- **内容安全**：目前没有图片鉴黄、敏感词、举报与封禁；校园场景建议补审核和管理员删除接口。
-- **图片**：限制 10MB、只允许 png/jpg/webp/gif/avif/heic；SVG 被拒（防 XSS）。R2 对象设 immutable 强缓存，key 带 UUID 不会冲突。
-
----
-
-## 八、目录
-
-```
-schoolink/
-├─ .github/workflows/deploy.yml   # 填环境变量 → 自动建 D1/KV/R2 → 部署
-├─ scripts/provision.mjs          # 幂等资源准备 + 建表 + 生成 wrangler 配置
-├─ wrangler.jsonc                 # 本地开发模板（CI 会覆写）
-├─ schema.sql                     # D1 建表（全 IF NOT EXISTS）
-├─ docs/preview.png               # 综合预览（含 /admin 后台）
-├─ docs/preview-{hero,chat,login,admin,admin-login,mobile}.png
-├─ src/index.js                   # 路由、鉴权、OTP 发信、上传、/admin API
-├─ src/admin-page.js              # /admin 后台 HTML（Worker 直接回传，避免 Assets 301 循环）
-├─ src/kv.js                      # KV 写入统一封装（expirationTtl 强制 ≥ 60 秒）
-├─ src/auth.js                    # HMAC 会话（用户/后台两套）、OTP、后缀校验、恒定时间比较
-├─ src/store.js                   # D1 / KV 数据访问层、热配置、sendMail
-├─ public/admin.html（備用直鏈）· admin.js · admin.css   # /admin 後台
-├─ public/index.html · style.css · app.js · logo.svg · favicon.svg
-└─ .dev.vars.example
-```
+- **实时性**已解决（WebSocket + Hibernation）；若要锁屏推送补 Web Push（VAPID + D1 订阅表）。
+- **KV 最终一致**：会话白名单/热配置在边缘可能有秒级延迟；需要严格即时吊销可把 session 表挪到 D1。
+- **内容安全**：目前没有图片鉴黄、敏感词、举报与封禁消息接口（账号停用已有）；校园场景建议补审核。
+- **备份**：D1 建议开 Time Travel / 定期 `wrangler d1 export`。
+- 那个曾在对话里明文出现过的 GitHub Token **请立即撤销重建**，之后只放 GitHub Secrets。

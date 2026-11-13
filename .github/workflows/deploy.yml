@@ -1,9 +1,7 @@
 name: Deploy Schoolink
 
 on:
-  # 仓库 → Actions → Deploy Schoolink → Run workflow，填完变量后点一下即可
   workflow_dispatch:
-  # 也想 push 就自动部署的话，保留下面这段；没填 CLOUDFLARE_ACCOUNT_ID 时会自动跳过，不会红灯
   push:
     branches: [main]
     paths-ignore:
@@ -20,33 +18,31 @@ permissions:
 
 jobs:
   deploy:
-    # 手动触发一律执行；push 触发时若还没填环境变量就跳过，避免首次推代码就失败
     if: ${{ github.event_name == 'workflow_dispatch' || vars.CLOUDFLARE_ACCOUNT_ID != '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     env:
-      # ── Secrets（必填 3 个 + 可选 2 个）────────────────────────────
+      # ── Secrets ──────────────────────────────────────────────
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-      # /admin 后台密码；只作为 Worker Secret，绝不写进 wrangler vars 或仓库
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       RESEND_FROM: ${{ secrets.RESEND_FROM }}
-      # ── Variables（都有默认值，按需覆盖）──────────────────────────
+      # ── Variables ────────────────────────────────────────────
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       WORKER_NAME: ${{ vars.WORKER_NAME || 'schoolink' }}
       D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'schoolink-db' }}
       KV_NAMESPACE_TITLE: ${{ vars.KV_NAMESPACE_TITLE || 'schoolink-cache' }}
-      # 不需要图片 / 没开通 R2 → 设成 false，脚本完全跳过 R2，不会报 already exists
       ENABLE_R2: ${{ vars.ENABLE_R2 || 'true' }}
       R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME || 'schoolink-images' }}
       R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL || '' }}
       ALLOWED_EMAIL_DOMAINS: ${{ vars.ALLOWED_EMAIL_DOMAINS || '@plkshs.edu.hk' }}
       ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS || '' }}
-      SCHOOL_NAME: ${{ vars.SCHOOL_NAME || 'Schoolink 校園' }}
+      SCHOOL_NAME: ${{ vars.SCHOOL_NAME || '保良局蕭漢森小學' }}
       ALLOW_DEV_OTP: ${{ vars.ALLOW_DEV_OTP || '0' }}
       CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN || '' }}
+      NEXT_TELEMETRY_DISABLED: '1'
 
     steps:
       - name: Checkout
@@ -55,59 +51,64 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Self-check (zero-dependency, runs before install)
+        run: python3 scripts/selfcheck.py
 
       - name: Install
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Validate inputs
         run: |
           set -e
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::缺少 Secret：CLOUDFLARE_API_TOKEN"; exit 1; }
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::缺少 Variable：CLOUDFLARE_ACCOUNT_ID"; exit 1; }
-          [ -n "$SESSION_SECRET" ] || { echo "::error::缺少 Secret：SESSION_SECRET（请填一段随机长字符串，否则每次部署会把所有人登出）"; exit 1; }
+          [ -n "$SESSION_SECRET" ] || { echo "::error::缺少 Secret：SESSION_SECRET（固定随机串，否则每次部署把所有人登出）"; exit 1; }
           if [ -z "$ADMIN_PASSWORD" ]; then
-            echo "::error::缺少 Secret：ADMIN_PASSWORD。没有它 /admin 无法登录，也就无法配置邮件服务发送注册验证码。请到 Settings → Secrets and variables → Actions → Secrets 新增（不是 Variables），再重跑本 workflow。"
+            echo "::error::缺少 Secret：ADMIN_PASSWORD（放 Secrets，不是 Variables）。没有它 /admin 无法登录，也无法配置注册验证码邮件。"
             exit 1
           fi
-          echo "✓ ADMIN_PASSWORD 已设置，部署后可打开 /admin"
           echo "✓ 环境变量齐备"
 
       - name: Provision D1 / KV / R2 + init schema
         run: node scripts/provision.mjs
 
-      - name: Deploy Worker
+      - name: Build Next.js (static export → out/)
+        run: npm run build
+
+      - name: Deploy Worker + assets + Durable Object
         run: npx wrangler deploy
 
       - name: Push Worker secrets
         run: |
           set -e
           printf '%s' "$SESSION_SECRET" | npx wrangler secret put SESSION_SECRET
-          if [ -n "$ADMIN_PASSWORD" ]; then
-            printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
-            echo "✓ ADMIN_PASSWORD 已写入（/admin 可以登录）"
-          fi
+          printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
           if [ -n "$RESEND_API_KEY" ]; then
             printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
-            echo "✓ RESEND_API_KEY 已写入（作为邮件服务兜底）"
+            echo "✓ RESEND_API_KEY 已写入（邮件服务兜底）"
           else
-            echo "· 未预填 RESEND_API_KEY：部署后到 /admin 填入邮件 API Token 与发件邮箱即可发送注册验证码"
+            echo "· 未预填 RESEND_API_KEY：部署后到 /admin 填邮件 API Token 即可发注册验证码"
           fi
           if [ -n "$RESEND_FROM" ]; then
             printf '%s' "$RESEND_FROM" | npx wrangler secret put RESEND_FROM
           fi
-          echo "✓ secrets 已生效（云端立即更新，无需再 deploy）"
+          echo "✓ secrets 已生效（云端即时更新，无需再 deploy）"
 
       - name: Summary
         run: |
           R2_LINE="$R2_BUCKET_NAME"
-          case "$ENABLE_R2" in 0|false|no|off|FALSE|False) R2_LINE="已停用（图片功能关闭）";; esac
+          case "$ENABLE_R2" in 0|false|no|off|FALSE|False) R2_LINE="已停用（附件功能关闭）";; esac
           {
-            echo "## 🍀 Schoolink 部署完成"
+            echo "## 🍀 Schoolink 部署完成（Next.js + TypeScript）"
             echo ""
             echo "| 项 | 值 |"
             echo "| --- | --- |"
             echo "| Worker | \`$WORKER_NAME\` |"
+            echo "| 前端 | Next.js 16 静态导出 → Workers Static Assets |"
+            echo "| 实时 | Durable Objects + WebSocket（RealtimeHub） |"
             echo "| D1 | \`$D1_DATABASE_NAME\` (表结构已自动建立) |"
             echo "| KV | \`$KV_NAMESPACE_TITLE\` |"
             echo "| R2 | \`$R2_LINE\` |"
@@ -118,5 +119,7 @@ jobs:
             echo "### 下一步"
             echo "1. 打开 \`/admin\`，用 \`ADMIN_PASSWORD\` 登录。"
             echo "2. 填入**邮件 API Token** 与**发件邮箱 From**，点「发送测试」确认可用。"
-            echo "3. 保存后，注册 / 登录就会真正发送 6 位验证码；后缀、管理员、R2 地址也可在这里改，即时生效，不用重跑 Action。"
+            echo "3. 保存后，注册 / 登录就会真正发送 6 位验证码；后缀、管理员、R2 地址也可在这里改，即时生效。"
+            echo ""
+            echo "> 前端可「安装到桌面」(PWA)，消息走 WebSocket 即时送达，断线自动重连 + 离线队列。"
           } >> "$GITHUB_STEP_SUMMARY"
