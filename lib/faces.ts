@@ -6,8 +6,8 @@
 interface Face {
   bg: string;
   face?: boolean;
-  eyes: "dot" | "happy" | "wide" | "sleep" | "love" | "think";
-  mouth: "smile" | "laugh" | "o" | "sad" | "flat" | "open";
+  eyes?: "dot" | "happy" | "wide" | "sleep" | "love" | "think";
+  mouth?: "smile" | "laugh" | "o" | "sad" | "flat" | "open";
   mark?: "tear" | "hat" | "zzz" | "spark" | "none";
   glyph?: "thumbs" | "heart" | "clover" | "fire" | "pray" | "muscle" | "clap" | "party" | "books";
 }
@@ -57,7 +57,7 @@ export function faceMarkup(name: string): string {
       love: '<path d="M12 12.5a2 2 0 0 1 4 0 2 2 0 0 1 4 0c0 2-2 3.5-4 5-2-1.5-4-3-4-5Z" fill="#FF5B7F"/>',
       think: '<circle cx="12" cy="13.5" r="1.5" fill="#4A3A20"/><path d="M18 12.5h4" stroke="#4A3A20" stroke-width="1.7" stroke-linecap="round"/>',
     };
-    s += eyes[f.eyes] || eyes.dot;
+    s += eyes[f.eyes || "dot"];
     const mouths: Record<string, string> = {
       smile: '<path d="M11 20q5 4 10 0" stroke="#4A3A20" stroke-width="1.8" fill="none" stroke-linecap="round"/>',
       laugh: '<path d="M10 19q6 7 12 0Z" fill="#7A3B32"/>',
@@ -66,7 +66,7 @@ export function faceMarkup(name: string): string {
       flat: '<path d="M12 21h8" stroke="#4A3A20" stroke-width="1.8" stroke-linecap="round"/>',
       open: '<ellipse cx="16" cy="21" rx="3" ry="3.5" fill="#7A3B32"/>',
     };
-    s += mouths[f.mouth] || mouths.smile;
+    s += mouths[f.mouth || "smile"];
     if (f.mark === "tear") s += '<path d="M22 16q2 4 0 5a1.6 1.6 0 0 1-3 0q-2-1 0-5Z" fill="#63B6FF"/>';
     if (f.mark === "hat") s += '<path d="M16 3l7 9H9Z" fill="#FF6B8B"/><circle cx="16" cy="3" r="1.8" fill="#FFD35C"/>';
     if (f.mark === "zzz") s += '<text x="22" y="10" font-size="7" fill="#4A3A20" font-family="sans-serif">z</text>';
