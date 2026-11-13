@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { avatarStyle, initials, cx, mediaUrl } from "@/lib/utils";
 import { LogoMark } from "./Logo";
+import { Icon } from "./Icon";
 import type { User } from "@/lib/types";
 
 export const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
@@ -83,7 +84,7 @@ export function InstallBanner() {
             <p>{t("installDesc")}</p>
           </div>
           <button className="btn primary small" onClick={() => useApp.getState().doInstall()}>{t("install")}</button>
-          <button className="icon-btn ghost" onClick={() => useApp.getState().dismissInstall()}>✕</button>
+          <button className="icon-btn ghost" onClick={() => useApp.getState().dismissInstall()}><Icon name="close" size={16} /></button>
         </motion.div>
       )}
     </AnimatePresence>
@@ -133,7 +134,7 @@ export function EmptyState({ icon, title, hint }: { icon: string; title: string;
   return (
     <motion.div className="empty-state"
       initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={softSpring}>
-      <div className="empty-icon">{icon}</div>
+      <div className="empty-icon"><Icon name={icon} size={32} /></div>
       <strong>{title}</strong>
       {hint && <p>{hint}</p>}
     </motion.div>
@@ -141,7 +142,7 @@ export function EmptyState({ icon, title, hint }: { icon: string; title: string;
 }
 
 export function Segmented<T extends string>({ value, options, onChange }: {
-  value: T; options: readonly { key: T; label: string }[]; onChange: (v: T) => void;
+  value: T; options: readonly { key: T; label: string; icon?: string }[]; onChange: (v: T) => void;
 }) {
   return (
     <div className="segmented">
@@ -150,7 +151,7 @@ export function Segmented<T extends string>({ value, options, onChange }: {
           {value === o.key && (
             <motion.span layoutId="seg-active" className="seg-active" transition={spring} />
           )}
-          <span>{o.label}</span>
+          <span>{o.icon && <Icon name={o.icon} size={13} />}{o.label}</span>
         </button>
       ))}
     </div>

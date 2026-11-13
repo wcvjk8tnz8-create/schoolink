@@ -5,6 +5,7 @@ import { useApp } from "@/lib/store";
 import { greeting } from "@/lib/utils";
 import { Clover } from "./Logo";
 import { TypingDots } from "./ui";
+import { Icon } from "./Icon";
 import Sidebar from "./Sidebar";
 import ChatPane from "./ChatPane";
 import Modals from "./Modals";
@@ -25,8 +26,8 @@ export default function Chat() {
             initial={{ y: -34, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -34, opacity: 0 }}>
             {conn === "connecting" && <TypingDots />}
             {conn === "connecting" && t("connecting")}
-            {conn === "reconnecting" && <>↻ {t("reconnecting")}</>}
-            {conn === "offline" && <>⚠ {t("offlineMode")}</>}
+            {conn === "reconnecting" && <><Icon name="refresh" size={14} /> {t("reconnecting")}</>}
+            {conn === "offline" && <><Icon name="warning" size={14} /> {t("offlineMode")}</>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -53,9 +54,9 @@ export default function Chat() {
                 transition={{ delay: 0.28 }}>{t("heroSub")}</motion.p>
               <motion.div className="hero-chips" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.36 }}>
-                <span>⚡ {t("connected")}</span>
-                <span>🔒 {t("brandTag")}</span>
-                <span>🍀 PWA</span>
+                <span><Icon name="bolt" size={13} /> {t("connected")}</span>
+                <span><Icon name="lock" size={13} /> {t("brandTag")}</span>
+                <span><Icon name="clover" size={13} /> PWA</span>
               </motion.div>
               <motion.p className="hero-ask" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 transition={{ delay: 0.5 }}>{t("heroAsk")}</motion.p>

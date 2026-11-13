@@ -94,7 +94,7 @@ for p in source_files():
             continue
         if base.exists() or any((p.parent / (spec + e)).exists() for e in EXTS):
             continue
-        broken.append(f"{p.relative_to(ROOT)} → {spec}")
+        broken.append(f"{p.relative_to(ROOT)} -> {spec}")
 ok("相对 import 无断链", not broken, "; ".join(broken[:5]))
 
 # ── 3. 配置可解析 ─────────────────────────────────────────────────
@@ -155,7 +155,7 @@ unmatched = [a for a in sorted(front_apis)
 ok("前端 API 在 Worker 均有路由", not unmatched, ", ".join(unmatched))
 ok("Worker 提供实时 WebSocket 入口", "/api/ws" in worker_src)
 
-# ── 6. Wrangler 绑定 ↔ 类型声明 ↔ DO 类名 ─────────────────────────
+# ── 6. Wrangler 绑定 / 类型声明 / DO 类名 ─────────────────────────
 if "wrangler.jsonc" in parsed:
     w = parsed["wrangler.jsonc"]
     names = []
@@ -194,7 +194,7 @@ sql = text("schema.sql")
 creates = re.findall(r"CREATE\s+(TABLE|INDEX)\s+(?!IF\s+NOT\s+EXISTS)", sql, re.I)
 ok("所有 CREATE 均带 IF NOT EXISTS", not creates, str(len(creates)))
 mig = text("worker/migrate.ts")
-ok("v1→v2 在线迁移已接入 /api/*", "ensureSchema" in mig and "ensureSchema(env)" in worker_src
+ok("v1 到 v2 在线迁移已接入 /api/*", "ensureSchema" in mig and "ensureSchema(env)" in worker_src
    and 'kvPut(env.CACHE, "SCHEMA:v2"' in mig)
 v2_extra = ["about", "banned", "last_seen", "last_message_at", "pinned", "muted",
             "archived", "starred", "media_key", "media_size", "reply_to",
@@ -257,10 +257,54 @@ for p in source_files():
             secrets.append(f"{p.relative_to(ROOT)}: {label}")
 ok("源码内无真实凭据", not secrets, "; ".join(secrets[:4]))
 
+# ── 12. 图标：全部 SVG，界面无 emoji ─────────────────────────────────
+ui_rel = [p.relative_to(ROOT).as_posix() for p in source_files()]
+ui_targets = [p for p in ui_rel if (
+    p.startswith("components/") or p.startswith("app/")
+    or p in ("lib/i18n.ts", "lib/utils.ts", "worker/index.ts", "worker/store.ts")
+) and p.endswith((".ts", ".tsx", ".css"))]
+emoji_re = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F]")
+emoji_hits = []
+for rel in ui_targets:
+    for i, line in enumerate((ROOT / rel).read_text(encoding="utf-8").splitlines(), 1):
+        if emoji_re.search(line):
+            emoji_hits.append(f"{rel}:{i}")
+ok("界面源码无 emoji 字符", not emoji_hits, ", ".join(emoji_hits[:6]))
+
+icon_src = text("components/Icon.tsx")
+ok("统一 SVG 图标组件存在", "export function Icon" in icon_src and "PATHS" in icon_src)
+defined = set(re.findall(r'^\s*"?([a-z][a-z-]*)"?\s*:', icon_src, re.M))
+used = set()
+for rel in ui_targets:
+    if rel.startswith("components/") and rel.endswith(".tsx"):
+        for m in re.findall(r'<Icon name="([a-z-]+)"', (ROOT / rel).read_text(encoding="utf-8")):
+            used.add(m)
+missing_icons = sorted(used - defined)
+ok("组件引用的图标都已定义", not missing_icons, ", ".join(missing_icons))
+ok("彩色表情贴纸组件存在", "export function FaceIcon" in icon_src and (ROOT / "lib/faces.ts").exists())
+
+logo = text("public/logo.svg")
+favicon = text("public/favicon.svg")
+ok("已恢复原本的四叶草 logo",
+   'viewBox="0 0 240 240"' in logo and "M84 100 L110 126 L84 152" in logo
+   and "M136 140 Q152 155 168 140" in logo and "240 240" in favicon
+   and 'viewBox="0 0 240 240"' in text("components/Logo.tsx"))
+
+faces_src = text("lib/faces.ts")
+worker_store = text("worker/store.ts")
+reaction_keys = re.search(r"REACTION_KEYS = \[(.*?)\]", faces_src, re.S)
+allowed = re.search(r"const allowed = \[(.*?)\]", worker_store, re.S)
+norm = lambda x: re.findall(r'"([a-z]+)"', x) if x else []
+ok("前后端表情回应白名单一致",
+   bool(reaction_keys and allowed) and norm(reaction_keys.group(1)) == norm(allowed.group(1)),
+   f"{norm(reaction_keys.group(1)) if reaction_keys else []} vs {norm(allowed.group(1)) if allowed else []}")
+ok("CSS 已适配 SVG 图标", ".svg-icon" in text("app/globals.css") and ".inline-face" in text("app/globals.css"))
+ok("邮件模板不含 emoji", not emoji_re.search(text("worker/index.ts")))
+
 # ── 汇总 ───────────────────────────────────────────────────────────
-print("🍀 Schoolink self-check\n")
+print(" Schoolink self-check\n")
 for passed, name, detail in results:
-    mark = "✓" if passed else "✗"
+    mark = "" if passed else ""
     print(f"  {mark} {name}" + (f"  — {detail}" if detail and not passed else ""))
 failed = [r for r in results if not r[0]]
 print(f"\n{len(results) - len(failed)}/{len(results)} passed")

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { Avatar, IconButton, TypingDots, spring, softSpring } from "./ui";
 import MessageBubble from "./MessageBubble";
+import { Icon } from "./Icon";
 import Composer from "./Composer";
 import {
   threadTitle, threadOther, fmtDay, fmtLastSeen, dayKeyOf, cx,
@@ -90,7 +91,7 @@ export default function ChatPane() {
   return (
     <>
       <header className="chat-head">
-        <IconButton className="mobile-back" onClick={() => useApp.setState({ activeId: null })}>←</IconButton>
+        <IconButton className="mobile-back" onClick={() => useApp.setState({ activeId: null })}><Icon name="arrow-left" size={18} /></IconButton>
         <motion.div className="ch-avatar" whileHover={{ scale: 1.05 }}>
           <Avatar user={thread.type === "direct" ? other : undefined}
             name={threadTitle(thread, me?.id || "")} id={thread.id} size={40} online={Boolean(isOnline)} />
@@ -109,22 +110,22 @@ export default function ChatPane() {
         <span className="spacer" />
         <IconButton title={t("searchTitle")} onClick={() => {
           useApp.getState().runSearch("", thread.id); useApp.getState().setModal("search");
-        }}>🔍</IconButton>
+        }}><Icon name="search" size={18} /></IconButton>
         <IconButton title={t("starredTitle")} onClick={() => {
           useApp.getState().loadStarred(); useApp.getState().setModal("starred");
-        }}>⭐</IconButton>
-        <IconButton title="⋮" onClick={() => setMenuOpen((v) => !v)}>⋮</IconButton>
+        }}><Icon name="star" size={18} /></IconButton>
+        <IconButton title="More" onClick={() => setMenuOpen((v) => !v)}><Icon name="more" size={18} /></IconButton>
 
         <AnimatePresence>
           {menuOpen && (
             <motion.div className="head-menu" initial={{ opacity: 0, y: -8, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.96 }}>
-              <button onClick={() => flag("pinned")}>📌 {thread.pinned ? t("unpin") : t("pin")}</button>
-              <button onClick={() => flag("muted")}>🔕 {thread.muted ? t("unmute") : t("mute")}</button>
-              <button onClick={() => flag("archived")}>📥 {thread.archived ? t("unarchive") : t("archive")}</button>
-              {thread.type === "group" && <button onClick={() => { setMenuOpen(false); useApp.getState().setModal("group-info"); }}>ℹ {t("groupInfo")}</button>}
+              <button onClick={() => flag("pinned")}><Icon name="pin" size={15} /> {thread.pinned ? t("unpin") : t("pin")}</button>
+              <button onClick={() => flag("muted")}><Icon name="bell-off" size={15} /> {thread.muted ? t("unmute") : t("mute")}</button>
+              <button onClick={() => flag("archived")}><Icon name="archive" size={15} /> {thread.archived ? t("unarchive") : t("archive")}</button>
+              {thread.type === "group" && <button onClick={() => { setMenuOpen(false); useApp.getState().setModal("group-info"); }}><Icon name="info" size={15} /> {t("groupInfo")}</button>}
               {thread.type === "group" && !thread.is_default &&
-                <button className="danger" onClick={() => { setMenuOpen(false); useApp.getState().leave(); }}>↪ {t("leave")}</button>}
+                <button className="danger" onClick={() => { setMenuOpen(false); useApp.getState().leave(); }}><Icon name="logout" size={15} /> {t("leave")}</button>}
             </motion.div>
           )}
         </AnimatePresence>
@@ -136,7 +137,7 @@ export default function ChatPane() {
         <div className="msg-inner">
           <motion.button className="load-older" onClick={() => useApp.getState().loadOlder()}
             whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-            ↑ {t("loadOlder")}
+            <Icon name="arrow-up" size={13} /> {t("loadOlder")}
           </motion.button>
           {grouped.map((g) => (
             <div key={g.key} className="day-group">
@@ -154,7 +155,7 @@ export default function ChatPane() {
           ))}
           {!list.length && (
             <motion.div className="no-msg" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              🍀 {t("noMessages")}
+              <Icon name="clover" size={22} /> {t("noMessages")}
             </motion.div>
           )}
           <div className="scroll-anchor" />
@@ -167,7 +168,7 @@ export default function ChatPane() {
             animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}
             whileHover={{ scale: 1.1 }} onClick={() => listRef.current?.scrollTo({
               top: listRef.current.scrollHeight, behavior: "smooth",
-            })}>↓</motion.button>
+            })}><Icon name="arrow-down" size={18} /></motion.button>
         )}
       </AnimatePresence>
 

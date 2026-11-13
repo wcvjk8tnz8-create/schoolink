@@ -4,11 +4,18 @@ import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { Avatar, spring, softSpring } from "./ui";
-import { REACTION_EMOJIS } from "@/lib/utils";
+import { REACTION_KEYS, faceKeyOf } from "@/lib/faces";
+import { FaceIcon, Icon } from "./Icon";
 import {
   fmtTime, fmtSize, fmtDuration, linkify, mediaUrl, cx,
 } from "@/lib/utils";
 import type { Message, Thread } from "@/lib/types";
+
+/** 回应贴纸：新数据存 key，旧数据里的 emoji 字符也能映射到 SVG */
+function ReactionGlyph({ v }: { v: string }) {
+  const k = faceKeyOf(v);
+  return k ? <FaceIcon name={k} size={15} /> : <span>{v}</span>;
+}
 
 function AudioPlayer({ m, url }: { m: Message; url: string }) {
   const ref = useRef<HTMLAudioElement>(null);
@@ -23,7 +30,7 @@ function AudioPlayer({ m, url }: { m: Message; url: string }) {
   return (
     <div className="audio-player">
       <motion.button className="audio-btn" onClick={toggle} whileTap={{ scale: 0.88 }}>
-        {playing ? "⏸" : "▶"}
+        {playing ? <Icon name="pause" size={16} /> : <Icon name="play" size={16} />}
       </motion.button>
       <div className="audio-wave" onClick={toggle}>
         {Array.from({ length: 26 }).map((_, i) => (
@@ -41,7 +48,7 @@ function AudioPlayer({ m, url }: { m: Message; url: string }) {
           setProgress(a.duration ? a.currentTime / a.duration : 0);
         }}
         onEnded={() => { setPlaying(false); setProgress(0); }} />
-      <a className="audio-dl" href={url} download={m.media_name || "voice"} title={t("download")}>↓</a>
+      <a className="audio-dl" href={url} download={m.media_name || "voice"} title={t("download")}><Icon name="download" size={16} /></a>
     </div>
   );
 }
@@ -59,7 +66,8 @@ function Ticks({ m, thread }: { m: Message; thread: Thread }) {
     <motion.span className={cx("ticks", allRead && "read")}
       initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}
       title={allRead ? "Read" : someRead ? "Delivered" : "Sent"}>
-      {m.pending ? "◷" : allRead ? "✓✓" : someRead ? "✓✓" : "✓"}
+      {m.pending ? <Icon name="clock" size={13} /> :
+        allRead || someRead ? <Icon name="check-double" size={14} /> : <Icon name="check" size={13} />}
     </motion.span>
   );
 }
@@ -126,7 +134,7 @@ export default function MessageBubble({ m, thread, index }: {
             </div>
           )}
 
-          {m.forwarded_from && <div className="fwd-label">↪ {t("forwarded")}</div>}
+          {m.forwarded_from && <div className="fwd-label"><Icon name="forward" size={13} /> {t("forwarded")}</div>}
 
           {m.reply && (
             <div className="reply-quote" onClick={() => {
@@ -139,7 +147,7 @@ export default function MessageBubble({ m, thread, index }: {
           )}
 
           {m.deleted_at ? (
-            <div className="deleted-text">🚫 {t("deleted")}</div>
+            <div className="deleted-text"><Icon name="ban" size={15} /> {t("deleted")}</div>
           ) : m.kind === "image" ? (
             <motion.img className="msg-img" src={mediaSrc} alt={m.media_name || "image"}
               loading="lazy" onClick={() => useApp.getState().setLightbox({ url: mediaSrc, name: m.media_name || t("image") })}
@@ -148,10 +156,10 @@ export default function MessageBubble({ m, thread, index }: {
             <AudioPlayer m={m} url={mediaSrc} />
           ) : m.kind === "file" ? (
             <a className="file-card" href={mediaSrc} download={m.media_name || "file"} target="_blank" rel="noreferrer">
-              <span className="file-icon">📎</span>
+              <span className="file-icon"><Icon name="paperclip" size={22} /></span>
               <span className="file-meta"><strong>{m.media_name || t("file")}</strong>
                 <small>{fmtSize(m.media_size)} · {t("download")}</small></span>
-              <span className="file-dl">↓</span>
+              <span className="file-dl"><Icon name="download" size={16} /></span>
             </a>
           ) : (
             <div className="msg-text" dangerouslySetInnerHTML={{ __html: linkify(m.body) }} />
@@ -161,12 +169,12 @@ export default function MessageBubble({ m, thread, index }: {
             {m.edited_at && <span className="edited">{t("edited")}</span>}
             <span>{fmtTime(m.created_at, lang)}</span>
             <Ticks m={m} thread={thread} />
-            {m.starred && <span className="star-mark">⭐</span>}
+            {m.starred && <span className="star-mark"><Icon name="star-filled" size={12} /></span>}
             {m.failed && <span className="failed-mark">!</span>}
           </div>
 
           {!m.deleted_at && (
-            <button className="bubble-menu-btn" onClick={() => setMenu((v) => !v)} aria-label="more">⋮</button>
+            <button className="bubble-menu-btn" onClick={() => setMenu((v) => !v)} aria-label="more"><Icon name="more" size={16} /></button>
           )}
 
           <AnimatePresence>
@@ -182,7 +190,7 @@ export default function MessageBubble({ m, thread, index }: {
                     onClick={() => useApp.getState().react(m.id, emoji)}
                     initial={{ scale: 0.4 }} animate={{ scale: 1 }} whileTap={{ scale: 0.86 }}
                     transition={spring}>
-                    {emoji} <span>{v.n}</span>
+                    <ReactionGlyph v={emoji} /> <span>{v.n}</span>
                   </motion.button>
                 ))}
               </motion.div>
@@ -193,20 +201,20 @@ export default function MessageBubble({ m, thread, index }: {
             {menu && !m.deleted_at && (
               <motion.div className="msg-menu" initial={{ opacity: 0, scale: 0.88, y: -6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}>
-                <button onClick={() => { setEmojiOpen((v) => !v); }}>☺ {t("emoji")}</button>
-                <button onClick={() => doAction("reply")}>↩ {t("reply")}</button>
-                <button onClick={() => doAction("forward")}>↪ {t("forward")}</button>
-                <button onClick={() => doAction("star")}>{m.starred ? "★" : "⭐"} {m.starred ? t("unstar") : t("star")}</button>
-                <button onClick={() => doAction("copy")}>⧉ {t("copy")}</button>
-                {mine && m.kind === "text" && <button onClick={() => doAction("edit")}>✎ {t("edit")}</button>}
-                {mine && <button className="danger" onClick={() => doAction("delete")}>🗑 {t("del")}</button>}
+                <button onClick={() => { setEmojiOpen((v) => !v); }}><Icon name="smile" size={15} /> {t("emoji")}</button>
+                <button onClick={() => doAction("reply")}><Icon name="reply" size={15} /> {t("reply")}</button>
+                <button onClick={() => doAction("forward")}><Icon name="forward" size={15} /> {t("forward")}</button>
+                <button onClick={() => doAction("star")}><Icon name={m.starred ? "star-filled" : "star"} size={15} /> {m.starred ? t("unstar") : t("star")}</button>
+                <button onClick={() => doAction("copy")}><Icon name="copy" size={15} /> {t("copy")}</button>
+                {mine && m.kind === "text" && <button onClick={() => doAction("edit")}><Icon name="edit" size={15} /> {t("edit")}</button>}
+                {mine && <button className="danger" onClick={() => doAction("delete")}><Icon name="trash" size={15} /> {t("del")}</button>}
                 <AnimatePresence>
                   {emojiOpen && (
                     <motion.div className="emoji-pop" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-                      {REACTION_EMOJIS.map((e) => (
-                        <motion.button key={e} whileHover={{ scale: 1.3 }} whileTap={{ scale: 0.9 }}
-                          onClick={async () => { await useApp.getState().react(m.id, e); setEmojiOpen(false); setMenu(false); }}>
-                          {e}
+                      {REACTION_KEYS.map((k) => (
+                        <motion.button key={k} whileHover={{ scale: 1.3 }} whileTap={{ scale: 0.9 }}
+                          onClick={async () => { await useApp.getState().react(m.id, k); setEmojiOpen(false); setMenu(false); }}>
+                          <FaceIcon name={k} size={20} />
                         </motion.button>
                       ))}
                     </motion.div>

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { Clover } from "./Logo";
 import { Avatar, IconButton, ListSkeleton, spring, softSpring } from "./ui";
+import { Icon } from "./Icon";
 import { threadTitle, threadOther, preview, fmtTime, cx, dayKeyOf } from "@/lib/utils";
 import type { Thread, Filter } from "@/lib/types";
 
@@ -43,8 +44,8 @@ function ThreadRow({ t, index }: { t: Thread; index: number }) {
         </div>
         <div className="tr-bottom">
           <span className="tr-preview">{preview(t, tFn) || tFn("noMessages")}</span>
-          {t.pinned ? <span className="tr-flag">📌</span> : null}
-          {t.muted ? <span className="tr-flag">🔕</span> : null}
+          {t.pinned ? <Icon name="pin" size={12} className="tr-flag" /> : null}
+          {t.muted ? <Icon name="bell-off" size={12} className="tr-flag" /> : null}
           {t.unread > 0 && (
             <motion.span key={t.unread} className="tr-unread"
               initial={{ scale: 0.4 }} animate={{ scale: 1 }} transition={spring}>
@@ -99,14 +100,14 @@ export default function Sidebar() {
           <Clover size={34} animate={false} />
           <div><strong>Schoolink</strong><span>{t("brandTag")}</span></div>
           <span className="spacer" />
-          <IconButton className="green" title={t("newChat")} onClick={() => useApp.getState().setModal("new-chat")}>＋</IconButton>
+          <IconButton className="green" title={t("newChat")} onClick={() => useApp.getState().setModal("new-chat")}><Icon name="plus" size={18} /></IconButton>
         </div>
         <div className="side-search">
-          <span>🔍</span>
+          <Icon name="search" size={15} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchPh")} />
           <IconButton title={t("searchTitle")} onClick={() => {
             useApp.getState().runSearch(""); useApp.getState().setModal("search");
-          }}>⌕</IconButton>
+          }}><Icon name="search" size={16} /></IconButton>
         </div>
         <div className="filter-row">
           {filters.map((f) => (
@@ -124,7 +125,7 @@ export default function Sidebar() {
           <AnimatePresence initial={false}>
             {pinned.length > 0 && (
               <div className="thread-group" key="pinned">
-                <div className="group-label">📌 {t("pinned")}</div>
+                <div className="group-label"><Icon name="pin" size={12} /> {t("pinned")}</div>
                 {pinned.map((x, i) => <ThreadRow t={x} index={i} key={x.id} />)}
               </div>
             )}
@@ -136,7 +137,7 @@ export default function Sidebar() {
             )}
             {!filtered.length && (
               <motion.div key="empty" className="side-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <div>🍀</div><strong>{t("noThreads")}</strong><p>{t("noThreadsHint")}</p>
+                <Clover size={44} animate={false} /><strong>{t("noThreads")}</strong><p>{t("noThreadsHint")}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -151,9 +152,9 @@ export default function Sidebar() {
         </motion.button>
         <IconButton title={t("starredTitle")} onClick={() => {
           useApp.getState().loadStarred(); useApp.getState().setModal("starred");
-        }}>⭐</IconButton>
-        <IconButton title={t("settingsTitle")} onClick={() => useApp.getState().setModal("settings")}>⚙</IconButton>
-        <IconButton title={t("logout")} onClick={() => useApp.getState().logout()}>⇥</IconButton>
+        }}><Icon name="star" size={17} /></IconButton>
+        <IconButton title={t("settingsTitle")} onClick={() => useApp.getState().setModal("settings")}><Icon name="settings" size={17} /></IconButton>
+        <IconButton title={t("logout")} onClick={() => useApp.getState().logout()}><Icon name="logout" size={17} /></IconButton>
       </div>
       <div className="side-status">
         <span className="pulse-dot" />

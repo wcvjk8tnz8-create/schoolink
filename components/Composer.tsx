@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { IconButton, Spinner, spring, softSpring } from "./ui";
-import { EMOJIS, cx } from "@/lib/utils";
+import { cx } from "@/lib/utils";
+import { FACE_KEYS } from "@/lib/faces";
+import { FaceIcon, Icon } from "./Icon";
 
 export default function Composer({ threadId }: { threadId: string }) {
   const t = useApp((s) => s.t);
@@ -119,10 +121,10 @@ export default function Composer({ threadId }: { threadId: string }) {
           <motion.div className="reply-bar" initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
             <span className="reply-accent" />
-            <div><strong>↩ {replyTo.sender_id === me?.id ? t("you") :
+            <div><strong><Icon name="reply" size={14} /> {replyTo.sender_id === me?.id ? t("you") :
               thread?.members.find((x) => x.id === replyTo.sender_id)?.display_name}</strong>
               <small>{replyTo.body || `[${replyTo.kind}]`}</small></div>
-            <IconButton onClick={() => useApp.getState().setReplyTo(null)}>✕</IconButton>
+            <IconButton onClick={() => useApp.getState().setReplyTo(null)}><Icon name="close" size={16} /></IconButton>
           </motion.div>
         )}
       </AnimatePresence>
@@ -143,12 +145,12 @@ export default function Composer({ threadId }: { threadId: string }) {
           <motion.div className="emoji-picker" initial={{ opacity: 0, y: 14, scale: 0.94 }}
             animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={softSpring}>
-            <div className="emoji-head">{t("emoji")}<IconButton onClick={() => setEmojiOpen(false)}>✕</IconButton></div>
+            <div className="emoji-head">{t("emoji")}<IconButton onClick={() => setEmojiOpen(false)}><Icon name="close" size={15} /></IconButton></div>
             <div className="emoji-grid">
-              {EMOJIS.map((e) => (
-                <motion.button key={e} whileHover={{ scale: 1.35 }} whileTap={{ scale: 0.9 }}
-                  onClick={() => { useApp.getState().setDraft(draft + e); setEmojiOpen(false); taRef.current?.focus(); }}>
-                  {e}
+              {FACE_KEYS.map((k) => (
+                <motion.button key={k} title={k} whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}
+                  onClick={() => { useApp.getState().setDraft(draft + `:${k}:`); setEmojiOpen(false); taRef.current?.focus(); }}>
+                  <FaceIcon name={k} size={24} />
                 </motion.button>
               ))}
             </div>
@@ -161,9 +163,9 @@ export default function Composer({ threadId }: { threadId: string }) {
           <motion.div className="attach-menu" initial={{ opacity: 0, y: 12, scale: 0.92 }}
             animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.94 }}
             transition={softSpring}>
-            <button onClick={() => imgRef.current?.click()}><span>🖼</span>{t("photo")}</button>
-            <button onClick={() => fileRef.current?.click()}><span>📎</span>{t("fileAttach")}</button>
-            <button onClick={() => { setAttachOpen(false); toggleRecord(); }}><span>🎤</span>{t("voice")}</button>
+            <button onClick={() => imgRef.current?.click()}><Icon name="image" size={17} />{t("photo")}</button>
+            <button onClick={() => fileRef.current?.click()}><Icon name="paperclip" size={17} />{t("fileAttach")}</button>
+            <button onClick={() => { setAttachOpen(false); toggleRecord(); }}><Icon name="mic" size={17} />{t("voice")}</button>
             <small>{t("uploadHint")}</small>
           </motion.div>
         )}
@@ -172,10 +174,10 @@ export default function Composer({ threadId }: { threadId: string }) {
       <div className={cx("composer", recording && "recording")}>
         {r2Enabled && (
           <IconButton title={t("attach")} onClick={() => { setAttachOpen((v) => !v); setEmojiOpen(false); }}>
-            <motion.span animate={{ rotate: attachOpen ? 45 : 0 }} transition={spring}>＋</motion.span>
+            <motion.span animate={{ rotate: attachOpen ? 45 : 0 }} transition={spring}><Icon name="plus" size={20} /></motion.span>
           </IconButton>
         )}
-        <IconButton title={t("emoji")} onClick={() => { setEmojiOpen((v) => !v); setAttachOpen(false); }}>☺</IconButton>
+        <IconButton title={t("emoji")} onClick={() => { setEmojiOpen((v) => !v); setAttachOpen(false); }}><Icon name="smile" size={20} /></IconButton>
         <textarea ref={taRef} value={draft} rows={1}
           onChange={(e) => useApp.getState().setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -185,11 +187,11 @@ export default function Composer({ threadId }: { threadId: string }) {
           disabled={recording} />
         {recording ? (
           <motion.button className="rec-btn" onClick={toggleRecord}
-            animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 1.1, repeat: Infinity }}>⏹</motion.button>
+            animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 1.1, repeat: Infinity }}><Icon name="stop" size={18} /></motion.button>
         ) : (
           <motion.button className="send-btn" onClick={send} disabled={!draft.trim() || busy}
             whileHover={{ scale: 1.07 }} whileTap={{ scale: 0.9 }} transition={spring}>
-            {busy ? <Spinner size={16} /> : "➤"}
+            {busy ? <Spinner size={16} /> : <Icon name="send" size={18} />}
           </motion.button>
         )}
       </div>

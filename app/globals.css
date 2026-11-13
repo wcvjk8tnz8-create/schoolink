@@ -144,9 +144,9 @@ input:focus,textarea:focus { border-color:var(--accent) !important; }
   justify-content:center; gap:16px; background:radial-gradient(900px 600px at 50% 35%,#2a2476,#111113 70%); }
 .splash-name { font-size:23px; font-weight:700; letter-spacing:2px; }
 .splash-bar { width:130px; height:3px; border-radius:9px; background:linear-gradient(90deg,var(--accent),var(--accent2)); transform-origin:left; }
-.clover-float { animation:cloverFloat 4.5s ease-in-out infinite; transform-origin:50px 50px; }
+.clover-float { animation:cloverFloat 4.5s ease-in-out infinite; transform-origin:120px 120px; }
 @keyframes cloverFloat { 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-6px) rotate(2deg)} }
-.clover-wink { animation:wink 5s ease-in-out infinite; transform-origin:43px 49px; }
+.clover-wink { animation:wink 5s ease-in-out infinite; transform-origin:97px 126px; }
 @keyframes wink { 0%,88%,100%{transform:scaleY(1)} 92%{transform:scaleY(.12)} 96%{transform:scaleY(1)} }
 
 /* ================================ login ================================ */
@@ -499,3 +499,35 @@ input:focus,textarea:focus { border-color:var(--accent) !important; }
   *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important;
     transition-duration:.01ms !important; scroll-behavior:auto !important; }
 }
+
+
+/* ── SVG 图标系统（界面不使用 emoji / 字符图标） ───────────────── */
+.svg-icon { display:inline-block; flex:none; vertical-align:-0.18em; }
+.face-icon, .inline-face { display:inline-block; flex:none; vertical-align:-0.32em; }
+.inline-face { width:1.25em; height:1.25em; }
+.icon-btn .svg-icon, .btn .svg-icon, .head-menu button .svg-icon,
+.msg-menu button .svg-icon, .attach-menu button .svg-icon,
+.hero-chips .svg-icon, .group-label .svg-icon, .no-msg .svg-icon,
+.fwd-label .svg-icon, .deleted-text .svg-icon { vertical-align:middle; }
+.icon-btn { display:inline-grid; place-items:center; }
+.side-search > .svg-icon { color:var(--muted2); flex:none; }
+.panel h2 .svg-icon { margin-right:7px; color:var(--accent); vertical-align:-3px; }
+.pw-hint .svg-icon, .notice .svg-icon, .admin-foot .svg-icon { vertical-align:-3px; }
+.hero-chips .svg-icon, .group-label .svg-icon, .no-msg .svg-icon,
+.fwd-label .svg-icon, .deleted-text .svg-icon { margin-right:5px; }
+.tr-flag.svg-icon { opacity:.75; }
+.ticks { display:inline-flex; align-items:center; letter-spacing:0; }
+.ticks .svg-icon { vertical-align:middle; }
+.star-mark .svg-icon, .edited .svg-icon { vertical-align:-2px; }
+.file-icon .svg-icon, .file-dl .svg-icon { display:block; }
+.emoji-grid button, .emoji-pop button { display:grid; place-items:center; }
+.emoji-grid button .face-icon, .emoji-pop button .face-icon,
+.reaction .face-icon { display:block; }
+.reaction .face-icon { flex:none; }
+.reaction span { line-height:1; }
+.pick-check .svg-icon { display:block; }
+.msg-menu button, .head-menu button, .attach-menu button, .btn { align-items:center; }
+.jump-btn .svg-icon, .load-older .svg-icon { vertical-align:-2px; margin-right:4px; }
+.audio-btn .svg-icon { display:block; }
+.audio-dl .svg-icon { display:block; }
+.send-btn .svg-icon, .rec-btn .svg-icon { display:block; margin:auto; }

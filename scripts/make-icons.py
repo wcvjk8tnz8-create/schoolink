@@ -75,4 +75,4 @@ for size, name, sc, mask in [
 ]:
     im = clover(size, sc, mask)
     im.convert("RGB" if mask else "RGBA").save(os.path.join(OUT, name))
-    print("✓", name, im.size)
+    print("", name, im.size)

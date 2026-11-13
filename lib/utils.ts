@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Lang, Message, Thread, User } from "./types";
+import { faceSvg as inlineFace, shortLabel, FACE_LABEL } from "./faces";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -93,18 +94,22 @@ export function preview(t: Thread, t_fn: (k: string) => string): string {
     ? `${t.members.find((m) => m.id === t.last_sender)?.display_name || ""}: `
     : "";
   switch (t.last_kind) {
-    case "image": return prefix + "📷 " + t_fn("image");
-    case "audio": return prefix + "🎤 " + t_fn("audio");
-    case "file": return prefix + "📎 " + t_fn("file");
+    case "image": return prefix + t_fn("image");
+    case "audio": return prefix + t_fn("audio");
+    case "file": return prefix + t_fn("file");
     default: return prefix + t.last_body;
   }
 }
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
+const FACE_RE = /:([a-z]+):/g;
+const FACE_KEYS_SET = new Set(Object.keys(FACE_LABEL));
 export function linkify(text: string): string {
   return text.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string)
-    .replace(URL_RE, (u) => `<a href="${u.replace(/&amp;/g, "&")}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+    .replace(URL_RE, (u) => `<a href="${u.replace(/&amp;/g, "&")}" target="_blank" rel="noopener noreferrer">${u}</a>`)
+    // 只替换已知贴纸，普通文本里的 :abc: 原样保留
+    .replace(FACE_RE, (m, k) => FACE_KEYS_SET.has(k) ? inlineFace(k) : m);
 }
 
 export function isMine(m: Message, meId: string) { return m.sender_id === meId; }
@@ -129,8 +134,3 @@ export function mediaUrl(key: string | null, base: string): string {
   return base ? `${base.replace(/\/+$/, "")}/${key}` : `/api/file/${encodeURIComponent(key)}`;
 }
 
-export const EMOJIS = ["😀", "😂", "🥹", "😍", "🤔", "😭", "🥳", "😴",
-  "👍", "👏", "🙏", "💪", "🎉", "🍀", "❤️", "🔥", "✨", "📚", "✅", "💡",
-  "🐱", "🌈", "☀️", "🌙", "⚡", "🎈", "🍕", "☕"];
-
-export const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "🍀"];

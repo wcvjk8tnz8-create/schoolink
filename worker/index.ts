@@ -1,7 +1,7 @@
 /**
  * Schoolink · Cloudflare Workers (TypeScript)
  *
- *   Next.js 16 静态导出 → Workers Static Assets（免费、边缘、零冷启动）
+ *   Next.js 16 静态导出 -> Workers Static Assets（免费、边缘、零冷启动）
  *   本 Worker 只处理 /api/* 与 /admin
  *   D1 = 账号 + 聊天 · KV = 缓存/会话/OTP/热配置 · R2 = 图片语音文件
  *   Durable Objects = 每用户一个实时信箱，WebSocket 即时推送
@@ -81,7 +81,7 @@ function configView(cfg: AppConfig, env: Env, full = false) {
 function otpHtml(code: string, schoolName: string, isTest = false): string {
   const title = isTest ? "郵件設定測試 / Mail config test" : "你的登入驗證碼 / Your login code";
   return `<div style="font-family:system-ui,-apple-system,sans-serif;padding:28px;background:#141416;color:#f2f2f0;border-radius:18px;max-width:440px">
-    <div style="font-size:20px;font-weight:700">🍀 Schoolink</div>
+    <div style="font-size:20px;font-weight:700"><svg width="22" height="22" viewBox="0 0 32 32" style="vertical-align:-5px;margin-right:8px"><g fill="#8E8BF7"><circle cx="16" cy="10" r="6"/><circle cx="10" cy="16" r="6"/><circle cx="22" cy="16" r="6"/><circle cx="16" cy="22" r="6"/></g><circle cx="16" cy="16" r="4" fill="#4A63EE"/></svg>Schoolink</div>
     <div style="opacity:.55;font-size:12px;margin-top:4px">${escapeHtml(schoolName)}</div>
     <p style="margin:26px 0 10px;font-size:14px">${title}</p>
     <div style="font-size:38px;letter-spacing:10px;font-weight:750;color:#a999ff;background:#202028;padding:16px;border-radius:12px;text-align:center">${code}</div>

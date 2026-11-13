@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { Clover } from "./Logo";
 import { IconButton, Spinner } from "./ui";
+import { Icon } from "./Icon";
 import { LANGS, LANG_LABEL } from "@/lib/i18n";
 import { softSpring } from "./ui";
 
@@ -60,8 +61,8 @@ export default function Login() {
 
         {!config.mailConfigured && !config.devOtp && (
           <motion.div className="notice" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-            ⚠ {t("mailNotConfigured")}
-            <a href="/admin">→ {t("goAdmin")}</a>
+            <Icon name="warning" size={14} /> {t("mailNotConfigured")}
+            <a href="/admin"><Icon name="arrow-right" size={13} /> {t("goAdmin")}</a>
           </motion.div>
         )}
 
@@ -96,7 +97,7 @@ export default function Login() {
                 {busy ? <Spinner /> : t("verify")}
               </motion.button>
               <button className="btn-ghost" onClick={() => { setStep("email"); setError(""); }}>
-                ← {t("back")}
+                <Icon name="arrow-left" size={14} /> {t("back")}
               </button>
             </motion.div>
           )}
@@ -119,7 +120,7 @@ export default function Login() {
       </motion.div>
       <div className="login-foot">
         <IconButton onClick={() => useApp.getState().setLang(LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length])}
-          title="Language">🌐</IconButton>
+          title="Language"><Icon name="globe" size={18} /></IconButton>
       </div>
     </div>
   );

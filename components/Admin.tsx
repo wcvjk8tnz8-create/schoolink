@@ -6,6 +6,7 @@ import { useApp } from "@/lib/store";
 import { post } from "@/lib/api";
 import { Clover } from "./Logo";
 import { Avatar, IconButton, Spinner, softSpring } from "./ui";
+import { Icon } from "./Icon";
 import { LANGS, LANG_LABEL } from "@/lib/i18n";
 
 export default function Admin() {
@@ -36,8 +37,8 @@ function AdminLogin() {
         transition={{ type: "spring", stiffness: 180, damping: 20 }}>
         <div className="login-head"><Clover size={64} /><h1>Schoolink · {t("console")}</h1>
           <p className="sub">{t("adminLoginSub")}</p></div>
-        <div className="pw-hint">🔑 {t("adminPwHint")}</div>
-        {cfg.adminPasswordSet === false && <div className="notice">⚠ {t("noPw")}</div>}
+        <div className="pw-hint"><Icon name="key" size={14} /> {t("adminPwHint")}</div>
+        {cfg.adminPasswordSet === false && <div className="notice"><Icon name="warning" size={14} /> {t("noPw")}</div>}
         <div className="field"><label>{t("password")}</label>
           <input type="password" value={pw} onChange={(e) => setPw(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()} placeholder={t("passwordPh")}
@@ -53,7 +54,7 @@ function AdminLogin() {
           {LANGS.map((l) => <button key={l} className={lang === l ? "on" : ""}
             onClick={() => useApp.getState().setLang(l)}>{LANG_LABEL[l]}</button>)}
         </div>
-        <a className="back-link" href="/">← {t("openChat")}</a>
+        <a className="back-link" href="/"><Icon name="arrow-left" size={13} /> {t("openChat")}</a>
       </motion.div>
     </div>
   );
@@ -68,14 +69,14 @@ function StatusCard({ label, ok, warn, value }: { label: string; ok: boolean; wa
   );
 }
 
-function Panel({ title, desc, children, delay = 0 }: {
-  title: string; desc: string; children: React.ReactNode; delay?: number;
+function Panel({ title, desc, children, delay = 0, icon }: {
+  title: string; desc: string; children: React.ReactNode; delay?: number; icon?: string;
 }) {
   return (
     <motion.section className="panel"
       initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       transition={{ delay, ...softSpring }}>
-      <h2>{title}</h2><p className="desc">{desc}</p>{children}
+      <h2>{icon && <Icon name={icon} size={17} />}{title}</h2><p className="desc">{desc}</p>{children}
     </motion.section>
   );
 }
@@ -130,7 +131,7 @@ function AdminConsole() {
       </motion.header>
 
       {!cfg.mailConfigured && <motion.div className="notice" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        ✉ {t("secMailDesc")}
+        <Icon name="mail" size={14} /> {t("secMailDesc")}
       </motion.div>}
 
       <div className="status-grid">
@@ -143,7 +144,7 @@ function AdminConsole() {
       </div>
 
       <div className="admin-grid">
-        <Panel title={`✉ ${t("secMail")}`} desc={t("secMailDesc")} delay={0.05}>
+        <Panel title={t("secMail")} icon="mail" desc={t("secMailDesc")} delay={0.05}>
           <Field label={t("mailToken")} hint={t("leaveBlank")}>
             <input type="password" value={f.mailApiToken || ""} onChange={(e) => setF("mailApiToken", e.target.value)}
               placeholder="re_xxxxxxxx" autoComplete="new-password" /></Field>
@@ -159,7 +160,7 @@ function AdminConsole() {
             <input value={f.mailApiBase || ""} onChange={(e) => setF("mailApiBase", e.target.value)}
               placeholder="https://api.resend.com" /></Field>
           <div className="divider" />
-          <h3>🧪 {t("testTitle")}</h3><p className="desc">{t("testDesc")}</p>
+          <h3><Icon name="beaker" size={15} /> {t("testTitle")}</h3><p className="desc">{t("testDesc")}</p>
           <div className="inline">
             <input value={f.testTo || ""} onChange={(e) => setF("testTo", e.target.value)}
               placeholder={t("testPh")} inputMode="email" />
@@ -169,7 +170,7 @@ function AdminConsole() {
         </Panel>
 
         <div className="admin-col">
-          <Panel title={`🍀 ${t("secCampus")}`} desc={t("secCampusDesc")} delay={0.1}>
+          <Panel title={t("secCampus")} icon="clover" desc={t("secCampusDesc")} delay={0.1}>
             <Field label={t("domains")}>
               <input value={f.domains || ""} onChange={(e) => setF("domains", e.target.value)} placeholder="@plkshs.edu.hk" /></Field>
             <Field label={t("adminEmails")}>
@@ -186,7 +187,7 @@ function AdminConsole() {
             </div>
           </Panel>
 
-          <Panel title={`👥 ${t("secUsers")}`} desc={t("secUsersDesc")} delay={0.16}>
+          <Panel title={t("secUsers")} icon="users" desc={t("secUsersDesc")} delay={0.16}>
             <div className="admin-users">
               <AnimatePresence initial={false}>
                 {users.slice(0, 60).map((u) => (
@@ -212,7 +213,7 @@ function AdminConsole() {
           {busy ? <Spinner /> : t("save")}
         </button>
         <IconButton title="Settings" onClick={() => useApp.getState().setTheme(
-          useApp.getState().theme === "dark" ? "light" : "dark")}>☾</IconButton>
+          useApp.getState().theme === "dark" ? "light" : "dark")}><Icon name="moon" size={17} /></IconButton>
       </motion.div>
     </div>
   );

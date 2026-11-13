@@ -1,4 +1,4 @@
-# 🍀 Schoolink · TypeScript + Next.js 16 · Cloudflare Workers
+# Schoolink · TypeScript + Next.js 16 · Cloudflare Workers
 
 > 校园即时通讯工具。界面是 **Codex 的深色工作台 × WhatsApp 的气泡聊天**，中间有一只会眨眼、会微笑的四叶草，下面按时间显示 `早上好, 201A6000`。
 
@@ -32,14 +32,14 @@ v2 用 **TypeScript 全量重写**：前端 Next.js 16 静态导出 + React 19 +
 
 `Settings → Secrets and variables → Actions`
 
-### Secrets（必填 ✅ / 可选）
+### Secrets（必填  / 可选）
 
 | 名称 | 必填 | 说明 |
 |---|---|---|
-| `CLOUDFLARE_API_TOKEN` | ✅ | 见下方一键创建链接 |
-| `CLOUDFLARE_ACCOUNT_ID` | ✅ | 建议放 **Variables**（`if` 判断需要它） |
-| `SESSION_SECRET` | ✅ | `openssl rand -hex 32`。**固定住**，改了会把所有人登出 |
-| `ADMIN_PASSWORD` | ✅ | `/admin` 登录密码。没填 workflow 会直接 fail |
+| `CLOUDFLARE_API_TOKEN` |  | 见下方一键创建链接 |
+| `CLOUDFLARE_ACCOUNT_ID` |  | 建议放 **Variables**（`if` 判断需要它） |
+| `SESSION_SECRET` |  | `openssl rand -hex 32`。**固定住**，改了会把所有人登出 |
+| `ADMIN_PASSWORD` |  | `/admin` 登录密码。没填 workflow 会直接 fail |
 | `RESEND_API_KEY` | 可选 | 邮件兜底；也可以部署后到 `/admin` 填 |
 | `RESEND_FROM` | 可选 | 例如 `Schoolink <noreply@plkshs.edu.hk>` |
 
@@ -90,16 +90,16 @@ https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%
 
 | | |
 |---|---|
-| 💬 私聊 / 群组 / 全校广场（注册自动加入） | 文字、图片、语音、文件（≤20MB） |
-| ⚡ **即时送达**：DO + WebSocket，非轮询 | 断线指数退避重连（1s→30s） |
-| ✓✓ 已读回执（蓝色 = 全部人已读） | 🟢 在线 / 最后上线 |
-| ⌨️ 正在输入指示 | ↩ 回复引用（点击跳到原消息） |
-| ↪ 转发（带「已转发」标记） | ✎ 编辑（15 分钟内）/ 🗑 删除 |
-| ☺ Emoji 表情回应（8 种，去重计数） | ⭐ 星标消息 + 星标列表 |
-| 📌 置顶 / 🔕 静音 / 📥 归档 | 🔴 未读数 + PWA 桌面角标 |
-| 🔍 搜索消息（全局 / 当前会话，`⌘K`） | 📷 图片灯箱、懒加载、下载 |
-| 🎤 语音录制（波形动画 + 时长） | 📎 文件卡片、群公告、群名/头像 |
-| 👥 加成员 / 退群 | 🧾 日期分隔、会话预览、草稿 |
+| 私聊 / 群组 / 全校广场（注册自动加入） | 文字、图片、语音、文件（≤20MB） |
+| **即时送达**：DO + WebSocket，非轮询 | 断线指数退避重连（1s→30s） |
+| 已读回执（蓝色 = 全部人已读） |  在线 / 最后上线 |
+| ⌨ 正在输入指示 | ↩ 回复引用（点击跳到原消息） |
+| ↪ 转发（带「已转发」标记） |  编辑（15 分钟内）/  删除 |
+| SVG 贴纸表情回应（8 种，去重计数） |  星标消息 + 星标列表 |
+| 置顶 /  静音 /  归档 |  未读数 + PWA 桌面角标 |
+| 搜索消息（全局 / 当前会话，`⌘K`） |  图片灯箱、懒加载、下载 |
+| 语音录制（波形动画 + 时长） |  文件卡片、群公告、群名/头像 |
+| 加成员 / 退群 |  日期分隔、会话预览、草稿 |
 
 ### 加分的
 
@@ -108,16 +108,23 @@ https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%
 - **三语**：简体 / 繁體 / EN 全量切换，问候语跟着变（`早晨` / `Good morning`）
 - **主题**：深 / 浅 / 跟随系统，用 View Transition 做平滑换肤
 - **问候语**：`早上好, 201A6000`，按时段变化
-- **🍀 四叶草**：渐变四叶 + 眨眼 `>` + 微笑嘴 + 腮红，弹簧入场、浮动、定时眨眼
+- ** 四叶草**：原本的紫蓝渐变四叶草 + 白色 `>` 眨眼 + 微笑嘴，弹簧入场、浮动、定时眨眼
 - **PWA**：可安装到桌面 / 主屏，独立窗口、离线外壳、桌面角标、快捷方式（新聊天 / 后台）、maskable 图标
 - **管理员**：热改邮箱后缀 / 管理员 / 校名 / R2 地址、测试发信、查看统计、**停用账号并强制下线**、Token 掩码、密码限流（5 次锁 10 分钟）
 - **安全**：HMAC 签名会话（HttpOnly + Secure + SameSite）、KV 白名单即时吊销、同源 Origin 校验、所有会话/消息接口校验 `thread_members`、R2 回源需登录、上传白名单 MIME、SVG 拒绝
 
-### 🎬 动画（每一处都做了）
+###  动画（每一处都做了）
 
 Motion 14 驱动：splash 进度条、四叶草弹簧入场/浮动/眨眼、视图切换淡入缩放、会话列表 stagger、筛选 chip 的 `layoutId` 滑动、气泡入场 + hover 抬升、未读徽章弹跳、消息菜单/表情面板 spring、弹窗 spring、回复条高度展开、波形录音、typing 三点、Toast、按钮 hover/tap、图片灯箱缩放、已读双勾渐显。
 
 **尊重系统设置**：`prefers-reduced-motion: reduce` 时全部降级为瞬时。
+
+### 图标系统：全站 SVG，不用 emoji
+
+- 所有按钮、菜单、状态、文件类型、已读双勾、在线状态都是 `components/Icon.tsx` 里的内联 SVG（44 个图标，`currentColor` 跟随主题）。
+- 表情 / 回应是 `lib/faces.ts` 里的彩色 SVG 贴纸：消息文本存 `:smile:` 这类短代码，渲染时替换为 SVG；旧数据里的 emoji 字符会自动映射，不会显示成空白。
+- 验证码邮件标题也用内联 SVG 四叶草 + 文字，不含 emoji。
+- `scripts/selfcheck.py` 会在部署前扫描界面源码，出现任何 emoji 字符直接 fail。
 
 ### 没加的，以及为什么
 

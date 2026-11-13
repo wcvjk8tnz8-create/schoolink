@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { Avatar, IconButton, Segmented, spring, softSpring } from "./ui";
+import { Icon } from "./Icon";
 import { LANGS, LANG_LABEL } from "@/lib/i18n";
 import { threadTitle, fmtTime, cx } from "@/lib/utils";
 import type { Message, Theme } from "@/lib/types";
@@ -19,7 +20,7 @@ function Shell({ title, children, wide = false }: {
         exit={{ opacity: 0, scale: 0.94, y: 12 }} transition={{ type: "spring", stiffness: 260, damping: 24 }}
         onClick={(e) => e.stopPropagation()}>
         <div className="modal-head"><h2>{title}</h2>
-          <IconButton onClick={() => useApp.getState().setModal(null)}>✕</IconButton></div>
+          <IconButton onClick={() => useApp.getState().setModal(null)}><Icon name="close" size={16} /></IconButton></div>
         <div className="modal-body">{children}</div>
       </motion.div>
     </motion.div>
@@ -60,7 +61,7 @@ function NewChat() {
       {mode === "group" && <div className="field"><label>{t("groupName")}</label>
         <input value={groupName} onChange={(e) => useApp.getState().setGroupName(e.target.value)}
           placeholder={t("groupNamePh")} /></div>}
-      <div className="side-search"><span>🔍</span>
+      <div className="side-search"><Icon name="search" size={15} />
         <input value={q} onChange={(e) => useApp.getState().setUserSearch(e.target.value)}
           placeholder={t("userSearch")} /></div>
       <div className="pick-list">
@@ -71,7 +72,7 @@ function NewChat() {
               transition={{ delay: Math.min(i * 0.02, 0.2) }} whileTap={{ scale: 0.98 }}>
               <Avatar user={u} size={38} />
               <div><strong>{u.display_name}</strong><small>{u.student_id} · {u.email}</small></div>
-              <motion.span className="pick-check" animate={{ scale: selected.includes(u.id) ? 1 : 0 }}>✓</motion.span>
+              <motion.span className="pick-check" animate={{ scale: selected.includes(u.id) ? 1 : 0 }}><Icon name="check" size={14} /></motion.span>
             </motion.button>
           ))}
         </AnimatePresence>
@@ -123,16 +124,16 @@ function Settings() {
     <Shell title={t("settingsTitle")}>
       <div className="set-block"><h3>{t("theme")}</h3>
         <Segmented value={theme} onChange={(v) => useApp.getState().setTheme(v as Theme)}
-          options={[{ key: "dark", label: `☾ ${t("themeDark")}` },
-            { key: "light", label: `☀ ${t("themeLight")}` },
-            { key: "system", label: `◐ ${t("themeSystem")}` }] as const} /></div>
+          options={[{ key: "dark", label: t("themeDark"), icon: "moon" },
+            { key: "light", label: t("themeLight"), icon: "sun" },
+            { key: "system", label: t("themeSystem"), icon: "system" }] as const} /></div>
       <div className="set-block"><h3>{t("language")}</h3>
         <Segmented value={lang} onChange={(v) => useApp.getState().setLang(v)}
           options={LANGS.map((l) => ({ key: l, label: LANG_LABEL[l] }))} /></div>
       <div className="set-block"><h3>{t("account")}</h3>
         <div className="set-row"><Avatar user={me} size={38} />
           <div><strong>{me?.display_name}</strong><small>{me?.email}</small></div></div>
-        <button className="btn danger full" onClick={() => useApp.getState().logout()}>↪ {t("logout")}</button>
+        <button className="btn danger full" onClick={() => useApp.getState().logout()}><Icon name="logout" size={14} /> {t("logout")}</button>
       </div>
       <div className="set-block"><h3>PWA</h3>
         <p className="muted-line">{t("installDesc")}</p>
@@ -165,9 +166,9 @@ function GroupInfo() {
           </motion.div>
         ))}
       </div>
-      <button className="btn full" onClick={() => useApp.getState().setModal("members")}>＋ {t("addMember")}</button>
+      <button className="btn full" onClick={() => useApp.getState().setModal("members")}><Icon name="plus" size={14} /> {t("addMember")}</button>
       {!thread.is_default &&
-        <button className="btn danger full" onClick={() => useApp.getState().leave()}>↪ {t("leave")}</button>}
+        <button className="btn danger full" onClick={() => useApp.getState().leave()}><Icon name="logout" size={14} /> {t("leave")}</button>}
     </Shell>
   );
 }
@@ -187,14 +188,14 @@ function AddMembers() {
             onClick={() => setSel((s) => s.includes(u.id) ? s.filter((x) => x !== u.id) : [...s, u.id])}
             whileTap={{ scale: 0.98 }}>
             <Avatar user={u} size={36} /><div><strong>{u.display_name}</strong><small>{u.student_id}</small></div>
-            <span className="pick-check" style={{ transform: `scale(${sel.includes(u.id) ? 1 : 0})` }}>✓</span>
+            <span className="pick-check" style={{ transform: `scale(${sel.includes(u.id) ? 1 : 0})` }}><Icon name="check" size={14} /></span>
           </motion.button>
         ))}
         {!list.length && <div className="muted-line">{t("noResults")}</div>}
       </div>
       <div className="modal-foot"><button className="btn primary" disabled={!sel.length}
         onClick={async () => { await useApp.getState().addMembers(sel); useApp.getState().setModal(null); }}>
-        ＋ {t("addMember")} ({sel.length})</button></div>
+        <Icon name="plus" size={14} /> {t("addMember")} ({sel.length})</button></div>
     </Shell>
   );
 }
@@ -243,7 +244,7 @@ function Search() {
   };
   return (
     <Shell title={t("searchTitle")} wide>
-      <div className="side-search big"><span>🔍</span>
+      <div className="side-search big"><Icon name="search" size={15} />
         <input autoFocus value={q} onChange={(e) => run(e.target.value)} placeholder={t("searchMsgPh")} /></div>
       <Segmented value={scope} onChange={(v) => { setScope(v); run(q); }}
         options={[{ key: "all", label: t("all") }, { key: "thread", label: t("chats") }] as const} />
@@ -264,7 +265,7 @@ function Forward() {
   const threads = useApp((s) => s.threads);
   if (!msg) return null;
   return (
-    <Shell title={`↪ ${t("forward")}`}>
+    <Shell title={t("forward")}>
       <div className="fwd-preview">{msg.body || `[${msg.kind}]`}</div>
       <div className="pick-list">
         {threads.map((th) => (
@@ -303,8 +304,8 @@ function Lightbox() {
         onClick={(e) => e.stopPropagation()} />
       <div className="lb-bar" onClick={(e) => e.stopPropagation()}>
         <span>{lb.name}</span>
-        <a className="btn" href={lb.url} download={lb.name} target="_blank" rel="noreferrer">↓ {t("download")}</a>
-        <IconButton onClick={() => useApp.getState().setLightbox(null)}>✕</IconButton>
+        <a className="btn" href={lb.url} download={lb.name} target="_blank" rel="noreferrer"><Icon name="download" size={14} /> {t("download")}</a>
+        <IconButton onClick={() => useApp.getState().setLightbox(null)}><Icon name="close" size={16} /></IconButton>
       </div>
     </motion.div>
   );

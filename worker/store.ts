@@ -214,11 +214,11 @@ export async function ensureDefaultGroup(env: Env, userId: string): Promise<stri
     const id = uid();
     await env.DB.prepare(
       "INSERT OR IGNORE INTO threads (id,type,name,about,avatar_key,direct_key,is_default,created_by,created_at,updated_at,last_message_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-    ).bind(id, "group", "校園廣場 / School Plaza", "全校公告與閒聊 🌿", null, null, 1, "system", now, now, now).run();
+    ).bind(id, "group", "校園廣場 / School Plaza", "全校公告與閒聊", null, null, 1, "system", now, now, now).run();
     group = await env.DB.prepare("SELECT id FROM threads WHERE is_default = 1 LIMIT 1").first<{ id: string }>();
     await env.DB.prepare(
       "INSERT OR IGNORE INTO messages (id,thread_id,sender_id,kind,body,created_at) VALUES (?,?,?,?,?,?)",
-    ).bind(`welcome-${id}`, id, "system", "system", "歡迎加入 Schoolink 👋  /  Welcome to Schoolink 👋", now).run();
+    ).bind(`welcome-${id}`, id, "system", "system", "歡迎加入 Schoolink / Welcome to Schoolink", now).run();
   }
   const gid = group!.id;
   await env.DB.prepare(
@@ -515,7 +515,7 @@ export async function deleteMessage(env: Env, userId: string, messageId: string)
 export async function toggleReaction(
   env: Env, userId: string, messageId: string, emoji: string,
 ): Promise<MessageView | null> {
-  const allowed = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "🍀"];
+  const allowed = ["thumbs", "heart", "laugh", "wow", "cry", "pray", "party", "clover"];
   if (!allowed.includes(emoji)) return null;
   const m = await env.DB.prepare("SELECT * FROM messages WHERE id=?").bind(messageId).first<MessageRow>();
   if (!m) return null;

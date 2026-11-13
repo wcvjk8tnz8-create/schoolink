@@ -70,7 +70,7 @@ jobs:
             echo "::error::缺少 Secret：ADMIN_PASSWORD（放 Secrets，不是 Variables）。没有它 /admin 无法登录，也无法配置注册验证码邮件。"
             exit 1
           fi
-          echo "✓ 环境变量齐备"
+          echo " 环境变量齐备"
 
       - name: Provision D1 / KV / R2 + init schema
         run: node scripts/provision.mjs
@@ -88,21 +88,21 @@ jobs:
           printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
           if [ -n "$RESEND_API_KEY" ]; then
             printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
-            echo "✓ RESEND_API_KEY 已写入（邮件服务兜底）"
+            echo " RESEND_API_KEY 已写入（邮件服务兜底）"
           else
             echo "· 未预填 RESEND_API_KEY：部署后到 /admin 填邮件 API Token 即可发注册验证码"
           fi
           if [ -n "$RESEND_FROM" ]; then
             printf '%s' "$RESEND_FROM" | npx wrangler secret put RESEND_FROM
           fi
-          echo "✓ secrets 已生效（云端即时更新，无需再 deploy）"
+          echo " secrets 已生效（云端即时更新，无需再 deploy）"
 
       - name: Summary
         run: |
           R2_LINE="$R2_BUCKET_NAME"
           case "$ENABLE_R2" in 0|false|no|off|FALSE|False) R2_LINE="已停用（附件功能关闭）";; esac
           {
-            echo "## 🍀 Schoolink 部署完成（Next.js + TypeScript）"
+            echo "##  Schoolink 部署完成（Next.js + TypeScript）"
             echo ""
             echo "| 项 | 值 |"
             echo "| --- | --- |"
