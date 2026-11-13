@@ -101,7 +101,7 @@ export default function ChatPane() {
           <AnimatePresence mode="wait">
             <motion.small key={subtitle} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.18 }}
-              className={cx(typers.length && "typing-sub")}>
+              className={cx(typers.length > 0 && "typing-sub")}>
               {typers.length > 0 && <TypingDots />}{subtitle}
             </motion.small>
           </AnimatePresence>

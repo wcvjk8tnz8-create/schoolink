@@ -118,7 +118,7 @@ export default function MessageBubble({ m, thread, index }: {
     >
       {!mine && <Avatar user={sender} name={sender?.display_name} size={30} className="msg-avatar" />}
       <div className="bubble-wrap">
-        <motion.div className={cx("bubble", m.deleted_at && "deleted", m.failed && "failed")}
+        <motion.div className={cx("bubble", Boolean(m.deleted_at) && "deleted", Boolean(m.failed) && "failed")}
           whileHover={{ y: -1 }} transition={spring}>
           {!mine && thread.type === "group" && (
             <div className="sender" style={{ color: `hsl(${(m.sender_id.charCodeAt(0) * 37) % 360} 70% 68%)` }}>

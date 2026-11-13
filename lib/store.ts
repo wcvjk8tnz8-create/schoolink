@@ -135,8 +135,8 @@ let pingTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let presenceTimer: ReturnType<typeof setInterval> | null = null;
 let typingSent = false;
-let typingTimer: ReturnType<typeof setTimeout> | null = null;
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
+let typingTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+let toastTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 let manuallyClosed = false;
 
 function applyTheme(theme: Theme) {
@@ -295,7 +295,7 @@ export const useApp = create<State>((set, get) => ({
       clearTimeout(typingTimer);
       typingTimer = setTimeout(() => {
         get().notifyTyping(false); typingSent = false;
-        typingTimer = null;
+        typingTimer = undefined;
       }, 2500);
     } else if (typingSent) {
       get().notifyTyping(false); typingSent = false; clearTimeout(typingTimer);
