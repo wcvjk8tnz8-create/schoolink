@@ -42,48 +42,67 @@ export function isEmailAllowed(email, domains) {
   return domains.some((d) => suffix === d);
 }
 
-export async function signSession(env, uid) {
+// kind = "user" | "admin"：两套完全独立的 Cookie / KV 白名单
+const SESSION_META = {
+  user: { cookie: "schoolink_session", prefix: "SESSION", ttl: 30 * DAY },
+  admin: { cookie: "schoolink_admin", prefix: "ADMINSESSION", ttl: 2 * 3600 },
+};
+
+export async function signSession(env, uid, kind = "user") {
+  const meta = SESSION_META[kind] || SESSION_META.user;
   const secret = env.SESSION_SECRET || "schoolink-local-dev-secret";
   const jti = crypto.randomUUID();
-  const exp = Math.floor(Date.now() / 1000) + SESSION_TTL;
-  const payload = b64u(enc.encode(JSON.stringify({ uid, jti, exp })));
+  const exp = Math.floor(Date.now() / 1000) + meta.ttl;
+  const payload = b64u(enc.encode(JSON.stringify({ uid, jti, exp, k: kind })));
   const sig = b64u(await hmac(secret, payload));
   await env.CACHE.put(
-    `SESSION:${jti}`,
+    `${meta.prefix}:${jti}`,
     JSON.stringify({ uid, exp }),
-    { expirationTtl: SESSION_TTL }
+    { expirationTtl: meta.ttl }
   );
-  return { token: `${payload}.${sig}`, exp };
+  return { token: `${payload}.${sig}`, exp, jti };
 }
 
-export async function verifySession(request, env) {
+export async function verifySession(request, env, kind = "user") {
+  const meta = SESSION_META[kind] || SESSION_META.user;
   const cookie = request.headers.get("Cookie") || "";
-  const match = /(?:^|;\s*)schoolink_session=([^;]+)/.exec(cookie);
+  const match = new RegExp(`(?:^|;\\s*)${meta.cookie}=([^;]+)`).exec(cookie);
   if (!match) return null;
   const token = decodeURIComponent(match[1]);
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return null;
   const secret = env.SESSION_SECRET || "schoolink-local-dev-secret";
   const expected = b64u(await hmac(secret, payload));
-  if (expected !== sig) return null;
+  if (!timingSafeEqual(expected, sig)) return null;
   let data;
   try {
     data = JSON.parse(new TextDecoder().decode(unb64u(payload)));
   } catch {
     return null;
   }
-  if (!data.uid || !data.jti || !data.exp || data.exp < Math.floor(Date.now() / 1000)) return null;
-  const stored = await env.CACHE.get(`SESSION:${data.jti}`, "json");
+  if (data.k !== kind || !data.uid || !data.jti || !data.exp || data.exp < Math.floor(Date.now() / 1000)) return null;
+  const stored = await env.CACHE.get(`${meta.prefix}:${data.jti}`, "json");
   if (!stored || stored.uid !== data.uid) return null;
   return { uid: data.uid, jti: data.jti };
 }
 
-export function sessionCookie(token) {
-  return `schoolink_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL}`;
+export function sessionCookie(token, kind = "user") {
+  const meta = SESSION_META[kind] || SESSION_META.user;
+  return `${meta.cookie}=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${meta.ttl}`;
 }
 
-export function clearCookie() {
-  return "schoolink_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0";
+export function clearCookie(kind = "user") {
+  const meta = SESSION_META[kind] || SESSION_META.user;
+  return `${meta.cookie}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+}
+
+/** 恒定时间字符串比较，避免用 === 泄漏长度 / 前缀信息 */
+export function timingSafeEqual(a, b) {
+  const x = String(a ?? ""), y = String(b ?? "");
+  const n = Math.max(x.length, y.length);
+  let diff = x.length === y.length ? 0 : 1;
+  for (let i = 0; i < n; i++) diff |= (x.charCodeAt(i) || 0) ^ (y.charCodeAt(i) || 0);
+  return diff === 0;
 }
 
 export async function issueOtp(env, email) {

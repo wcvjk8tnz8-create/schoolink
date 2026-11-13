@@ -26,9 +26,11 @@ jobs:
     timeout-minutes: 15
 
     env:
-      # ── Secrets（必填 2 个 + 可选 2 个）────────────────────────────
+      # ── Secrets（必填 3 个 + 可选 2 个）────────────────────────────
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      # /admin 后台密码；只作为 Worker Secret，绝不写进 wrangler vars 或仓库
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       RESEND_FROM: ${{ secrets.RESEND_FROM }}
       # ── Variables（都有默认值，按需覆盖）──────────────────────────
@@ -64,6 +66,11 @@ jobs:
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::缺少 Secret：CLOUDFLARE_API_TOKEN"; exit 1; }
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::缺少 Variable：CLOUDFLARE_ACCOUNT_ID"; exit 1; }
           [ -n "$SESSION_SECRET" ] || { echo "::error::缺少 Secret：SESSION_SECRET（请填一段随机长字符串，否则每次部署会把所有人登出）"; exit 1; }
+          if [ -z "$ADMIN_PASSWORD" ]; then
+            echo "::warning::未填 ADMIN_PASSWORD，/admin 后台将不可用；部署后到 /admin 配置邮件服务才能发送注册验证码"
+          else
+            echo "✓ ADMIN_PASSWORD 已设置，部署后可打开 /admin"
+          fi
           echo "✓ 环境变量齐备"
 
       - name: Provision D1 / KV / R2 + init schema
@@ -76,11 +83,15 @@ jobs:
         run: |
           set -e
           printf '%s' "$SESSION_SECRET" | npx wrangler secret put SESSION_SECRET
+          if [ -n "$ADMIN_PASSWORD" ]; then
+            printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
+            echo "✓ ADMIN_PASSWORD 已写入（/admin 可以登录）"
+          fi
           if [ -n "$RESEND_API_KEY" ]; then
             printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
-            echo "✓ RESEND_API_KEY 已写入"
+            echo "✓ RESEND_API_KEY 已写入（作为邮件服务兜底）"
           else
-            echo "· 未填 RESEND_API_KEY：生产登录需到 ⚙ 设置里允许 OTP，或补上邮件服务"
+            echo "· 未预填 RESEND_API_KEY：部署后到 /admin 填入邮件 API Token 与发件邮箱即可发送注册验证码"
           fi
           if [ -n "$RESEND_FROM" ]; then
             printf '%s' "$RESEND_FROM" | npx wrangler secret put RESEND_FROM
@@ -102,6 +113,10 @@ jobs:
             echo "| R2 | \`$R2_LINE\` |"
             echo "| 邮箱后缀 | \`$ALLOWED_EMAIL_DOMAINS\` |"
             if [ -n "$CUSTOM_DOMAIN" ]; then echo "| 自定义域 | https://$CUSTOM_DOMAIN |"; else echo "| 访问 | https://$WORKER_NAME.<你的子域>.workers.dev |"; fi
+            echo "| 管理后台 | \`/admin\`（用 ADMIN_PASSWORD 进入） |"
             echo ""
-            echo "> 管理员在网页 ⚙ 设置里改邮箱后缀 / R2 公网地址，即时生效，不用重跑 Action。"
+            echo "### 下一步"
+            echo "1. 打开 \`/admin\`，用 \`ADMIN_PASSWORD\` 登录。"
+            echo "2. 填入**邮件 API Token** 与**发件邮箱 From**，点「发送测试」确认可用。"
+            echo "3. 保存后，注册 / 登录就会真正发送 6 位验证码；后缀、管理员、R2 地址也可在这里改，即时生效，不用重跑 Action。"
           } >> "$GITHUB_STEP_SUMMARY"

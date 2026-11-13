@@ -169,7 +169,7 @@ const config = {
     directory: "./public",
     binding: "ASSETS",
     not_found_handling: "single-page-application",
-    run_worker_first: ["/api/*", "/api"],
+    run_worker_first: ["/api/*", "/api", "/admin", "/admin/"],
   },
   d1_databases: [{ binding: "DB", database_name: D1_NAME, database_id: d1Id }],
   kv_namespaces: [{ binding: "CACHE", id: kvId }],

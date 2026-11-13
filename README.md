@@ -23,14 +23,15 @@ R2 (Workers 绑定)         →  图片对象；可选，关闭后图片功能�
 
 `Settings → Secrets and variables → Actions`：
 
-**Secrets**（2 个必填，2 个可选）
+**Secrets**（3 个必填，2 个可选）
 
 | 名称 | 必填 | 说明 |
 |---|---|---|
 | `CLOUDFLARE_API_TOKEN` | ✅ | Cloudflare API Token，权限见下方 |
 | `SESSION_SECRET` | ✅ | 一长串随机字符串（如 `openssl rand -hex 32`）。**必须固定**，否则每次部署都会把所有人登出 |
-| `RESEND_API_KEY` | ⬜ | 不填则生产环境拿不到验证码，只能本地开发模式登录 |
-| `RESEND_FROM` | ⬜ | 例 `Schoolink <noreply@your-domain.com>` |
+| `ADMIN_PASSWORD` | ✅ | **`/admin` 后台密码**。只作为 Worker Secret 写入，绝不进 `wrangler vars` 或仓库 |
+| `RESEND_API_KEY` | ⬜ | 邮件服务兜底。不填也没关系，部署后到 `/admin` 网页填即可 |
+| `RESEND_FROM` | ⬜ | 例 `Schoolink <noreply@your-domain.com>`；同样可在 `/admin` 覆盖 |
 
 **Variables**（都有默认值，按需覆盖）
 
@@ -77,22 +78,67 @@ R2 (Workers 绑定)         →  图片对象；可选，关闭后图片功能�
 
 配了 R2 后想走自定义公网地址：Cloudflare Dashboard → R2 → bucket → Settings → Custom Domains 绑定域名，再把 `https://img.xxx` 填进 `R2_PUBLIC_BASE_URL` 重跑 Action（或者直接在网页 ⚙ 设置里改，即时生效）。
 
-### 4. 部署完之后
+### 4. 部署完之后：进 /admin 配好注册验证码
 
-- 首次登录用校园邮箱收验证码，自动建号并加入「校園廣場 / School Plaza」
-- 管理员（在 `ADMIN_EMAILS` 里）进 ⚙ 设置改**邮箱后缀**、**R2 公网地址**、学校名 → 存进 KV，**不用重跑 Action、不用重新部署**
-- 想换域名、换后缀默认值，改 Variables 再 Run workflow 一次即可
+1. 打开 `https://<你的 Worker 域名>/admin`，用 `ADMIN_PASSWORD` 登录（**不需要校园邮箱账号**，避免"还没配邮件 → 收不到验证码 → 进不去后台"的死锁）
+2. 填 **邮件 API Token**（Resend 的 `re_...`）和 **发件邮箱 / From**（已验证域名的地址）
+3. 点「发送测试」确认能收到 → 点「保存设置」
+4. 之后注册 / 登录就会真正发送 6 位验证码；首次登录自动建号并加入「校园广场 / School Plaza」
+
+同一页还能改邮箱后缀、管理员邮箱、学校名、R2 公网地址，**全部即时生效，不用重跑 Action、不用重新部署**。想换域名或后缀默认值，改 Variables 再 Run workflow 一次即可。
 
 > `push` 到 main 也会自动部署，但没填 `CLOUDFLARE_ACCOUNT_ID` 时 job 会自动跳过，所以第一次推代码不会红灯；改 README 或 docs 不会触发部署。
 
 ---
 
-## 二、本地开发（可选）
+## 二、/admin 后台与注册验证码
+
+### 为什么要有独立后台
+
+注册验证码依赖邮件服务，但旧流程要求「先在 GitHub Secrets 填 `RESEND_API_KEY`」才能发信。现在把邮件配置搬到网页：
+
+> **两个 API Token 别搞混**：`CLOUDFLARE_API_TOKEN` 只在 GitHub Secrets 里给 Action 用（自动建 D1/KV/R2）；`/admin` 里填的是**邮件 API Token**（Resend 的 `re_...`），专门用来发注册验证码。
+
+```
+GitHub Secrets 只留 3 个：CLOUDFLARE_API_TOKEN / SESSION_SECRET / ADMIN_PASSWORD
+        ↓ Action 部署（自动建 D1 / KV / R2 + 建表 + 写 secrets）
+打开 /admin  →  用 ADMIN_PASSWORD 登录
+        ↓
+填 邮件 API Token + 发件邮箱  →  发送测试  →  保存
+        ↓ 写入 KV CONFIG:app
+POST /api/auth/otp/request 读到配置 → 发 6 位验证码 → 注册 / 登录可用
+```
+
+优先级：**`/admin` 网页配置 > Worker Secret `RESEND_API_KEY` > 本地 dev OTP**。后台里点「清除」即可回退到 Secret。
+
+### 安全设计
+
+| 项 | 做法 |
+|---|---|
+| `ADMIN_PASSWORD` | 只存 Cloudflare Worker Secret；不进 `wrangler.jsonc`、不进 git、不返回给浏览器 |
+| 后台会话 | 独立 `schoolink_admin` Cookie，HMAC-SHA256 签名 + KV 白名单，2 小时过期，登出即失效 |
+| 密码校验 | 恒定时间比较；同 IP 连续失败 5 次锁 10 分钟 |
+| Token 回显 | 只回传掩码 `re_••••••••3f9a`，明文只在服务端 `sendMail` 里用 |
+| CSRF | 所有写请求校验同源 Origin |
+
+> 网页配置存在 KV，Cloudflare 账号内可见。若要最高保密：把 Token 放 GitHub Secret `RESEND_API_KEY`，并在 `/admin` 点「清除」回退。
+
+### 后台能改什么
+
+- **邮件**：API Token、发件邮箱 From、API 地址（默认 `https://api.resend.com`，可换兼容服务）、一键测试发信
+- **校园**：允许邮箱后缀、管理员邮箱、学校名称
+- **存储**：R2 自定义公网地址
+- **状态卡**：邮件服务 / 注册验证码 / R2 / 后台密码 四项健康状态，加用户/会话/消息统计
+
+---
+
+## 三、本地开发（可选）
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars      # 把 ALLOW_DEV_OTP 设为 1
+cp .dev.vars.example .dev.vars      # 填 ADMIN_PASSWORD；本地可把 ALLOW_DEV_OTP 设为 1
 # 在 .dev.vars 里填 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID
+# 启动后打开 http://localhost:8787/admin 即可配置邮件服务
 node scripts/provision.mjs          # 也可本地跑：自动建资源 + 生成配置 + 建表（作用于线上账号）
 npm run dev                        # 或只跑本地模拟：npm run db:local && npm run dev
 ```
@@ -101,11 +147,13 @@ npm run dev                        # 或只跑本地模拟：npm run db:local &&
 
 ---
 
-## 三、功能对照
+## 四、功能对照
 
 | 需求 | 实现 |
 |---|---|
-| 管理员配置邮箱后缀 | ⚙ 设置里改 `允许的邮箱后缀`，写进 KV `CONFIG:app`，即时生效；Variables 只是初始兜底。注册/发码严格按 `@` 后缀匹配 |
+| 注册发送验证码 | 校园邮箱 + 6 位 OTP（KV 存 10 分钟、55 秒限流），邮件由 `/admin` 配置的 API Token + 发件邮箱发出；未配置时登录页直接引导去 `/admin` |
+| `/admin` 后台 | `ADMIN_PASSWORD` 独立登录，配置邮件 API Token / 发件邮箱 / 后缀 / 管理员 / R2 地址，可一键发测试信 |
+| 管理员配置邮箱后缀 | ⚙ 设置或 `/admin` 改 `允许的邮箱后缀`，写进 KV `CONFIG:app`，即时生效；Variables 只是初始兜底。注册/发码严格按 `@` 后缀匹配 |
 | 图片走 R2 | `POST /api/upload` → `env.IMAGES.put()`，key 形如 `images/2026/11/<uuid>.png`，返回自定义域 URL；`GET /api/file/*` 兜底回源；R2 关闭则整体降级 |
 | D1 + KV 分工 | 账号与聊天全部落 D1；KV 只做缓存 / 会话 / OTP / 在线心跳 / 热配置 |
 | Codex × WhatsApp 界面 | 侧栏「置顶 / 私聊 / 群组」分组 + 筛选 chips + 底部状态条；右侧日期胶囊、气泡、双勾已读、壁纸水印、输入框 |
@@ -124,21 +172,25 @@ npm run dev                        # 或只跑本地模拟：npm run db:local &&
 
 ---
 
-## 四、登录流程
+## 五、登录流程
 
 1. 输入校园邮箱 → `POST /api/auth/otp/request`：先校验后缀，再限流（55 秒一次），生成 6 位验证码存 KV（10 分钟）。
-2. 有 `RESEND_API_KEY` 就走 Resend 发信；本地 `ALLOW_DEV_OTP=1` 时验证码直接回填；生产两者都没配会明确报错，不会静默放行。
+2. 邮件配置优先读 `/admin` 存在 KV 的设置，其次回退 Worker Secret `RESEND_API_KEY`，用 `sendMail()` 发出 6 位码；本地 `ALLOW_DEV_OTP=1` 时直接回填；三者都没配会返回 503 并提示管理员去 `/admin`，不会静默放行。
 3. `POST /api/auth/otp/verify` → 首次登录自动建号（学号 + 显示名），并加入默认群组。
 4. 签发 HMAC-SHA256 会话 token（`HttpOnly / Secure / SameSite=Lax` Cookie，30 天），同时在 KV 存白名单，登出即失效。
 5. 所有写接口校验同源 Origin；会话列表、消息接口都校验 `thread_members` 成员身份。
 
 ---
 
-## 五、API 一览
+## 六、API 一览
 
 | Method | Path | 说明 |
 |---|---|---|
-| GET | `/api/config` | 公开配置（后缀、R2 地址、是否启用 R2、学校名） |
+| GET | `/api/config` | 公开配置（后缀、R2 地址/是否启用、学校名、邮件是否已配置、后台密码是否已设） |
+| POST | `/api/admin/panel/login` / `logout` | `/admin` 用 `ADMIN_PASSWORD` 登录 / 登出，签发独立 2 小时会话 |
+| GET | `/api/admin/panel/state` | 后台状态：配置（Token 只给掩码）+ 用户/会话/消息统计 |
+| POST | `/api/admin/panel/config` | 热更新邮件 Token / From / API 地址 / 后缀 / 管理员 / 校名 / R2 地址 |
+| POST | `/api/admin/panel/test-mail` | 用当前配置发一封测试验证码邮件 |
 | POST | `/api/auth/otp/request` / `verify` | 验证码登录 |
 | GET | `/api/me` · POST `/api/logout` | 当前用户 / 登出 |
 | GET | `/api/users` · POST `/api/presence` | 同学列表 / 在线心跳 |
@@ -153,17 +205,18 @@ npm run dev                        # 或只跑本地模拟：npm run db:local &&
 
 ---
 
-## 六、上线前建议
+## 七、上线前建议
 
 - **实时性**：现在是轮询。要真·推送可把消息接口换成 Durable Objects + WebSocket，前端逻辑不用动。
 - **KV 最终一致性**：会话白名单与热配置在边缘可能有秒级延迟；如需严格即时吊销，把 session 表挪到 D1。
-- **邮件**：生产必须配 `RESEND_API_KEY`，否则用户拿不到验证码。
+- **邮件**：生产必须配好邮件服务（`/admin` 网页配置或 Secret `RESEND_API_KEY` 二选一），否则注册拿不到验证码；发件域名需在 Resend 验证通过。
+- **后台密码**：`ADMIN_PASSWORD` 要够长且只放 Secret；连续 5 次输错会锁 10 分钟。
 - **内容安全**：目前没有图片鉴黄、敏感词、举报与封禁；校园场景建议补审核和管理员删除接口。
 - **图片**：限制 10MB、只允许 png/jpg/webp/gif/avif/heic；SVG 被拒（防 XSS）。R2 对象设 immutable 强缓存，key 带 UUID 不会冲突。
 
 ---
 
-## 七、目录
+## 八、目录
 
 ```
 schoolink/
@@ -171,10 +224,12 @@ schoolink/
 ├─ scripts/provision.mjs          # 幂等资源准备 + 建表 + 生成 wrangler 配置
 ├─ wrangler.jsonc                 # 本地开发模板（CI 会覆写）
 ├─ schema.sql                     # D1 建表（全 IF NOT EXISTS）
-├─ docs/preview*.png              # 界面预览图
-├─ src/index.js                   # 路由、鉴权、上传、管理员 API
-├─ src/auth.js                    # HMAC 会话、Cookie、OTP、后缀校验
-├─ src/store.js                   # D1 / KV 数据访问层
+├─ docs/preview.png               # 综合预览（含 /admin 后台）
+├─ docs/preview-{hero,chat,login,admin,admin-login,mobile}.png
+├─ src/index.js                   # 路由、鉴权、OTP 发信、上传、/admin API
+├─ src/auth.js                    # HMAC 会话（用户/后台两套）、OTP、后缀校验、恒定时间比较
+├─ src/store.js                   # D1 / KV 数据访问层、热配置、sendMail
+├─ public/admin.html · admin.js · admin.css   # /admin 后台
 ├─ public/index.html · style.css · app.js · logo.svg · favicon.svg
 └─ .dev.vars.example
 ```

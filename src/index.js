@@ -2,12 +2,12 @@
 // Workers + Static Assets (前端) / D1 (账号+聊天) / KV (缓存+会话) / R2 (图片)
 import {
   normalizeEmail, isEmailAllowed, signSession, verifySession,
-  sessionCookie, clearCookie, issueOtp, consumeOtp,
+  sessionCookie, clearCookie, issueOtp, consumeOtp, timingSafeEqual,
 } from "./auth.js";
 import {
-  loadConfig, saveConfig, publicUser, getUserById, getUserByEmail, createUser,
-  listUsers, isMember, listThreads, createThread, getRecentMessages,
-  getMessagesAfter, insertMessage, markRead, setPresence, adminStats,
+  loadConfig, saveConfig, maskToken, sendMail, publicUser, getUserById,
+  getUserByEmail, createUser, listUsers, isMember, listThreads, createThread,
+  getRecentMessages, getMessagesAfter, insertMessage, markRead, setPresence, adminStats,
 } from "./store.js";
 
 const json = (data, status = 200, headers = {}) =>
@@ -26,6 +26,11 @@ const MAX_IMAGE = 10 * 1024 * 1024;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // /admin 是独立后台页（不依赖校园邮箱登录），由 Worker 重写到静态 admin.html
+    if (url.pathname === "/admin" || url.pathname === "/admin/") {
+      const target = new URL("/admin.html", url);
+      return env.ASSETS.fetch(new Request(target, request));
+    }
     if (!url.pathname.startsWith("/api")) {
       // 静态资源 / SPA fallback 交还 Assets binding
       return env.ASSETS.fetch(request);
@@ -73,6 +78,9 @@ async function route(request, env, url) {
         schoolName: cfg.schoolName,
         devOtp: cfg.devOtp,
         mailConfigured: cfg.mailConfigured,
+        mailSource: cfg.mailSource,
+        mailFrom: cfg.mailFrom,
+        adminPasswordSet: cfg.adminPasswordSet,
         r2Enabled: Boolean(env.IMAGES),
       },
     });
@@ -89,31 +97,24 @@ async function route(request, env, url) {
     await env.CACHE.put(rateKey, "1", { expirationTtl: 55 });
 
     const code = await issueOtp(env, email);
-    if (env.RESEND_API_KEY) {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: env.RESEND_FROM || "Schoolink <onboarding@resend.dev>",
-          to: [email],
-          subject: "Schoolink 校園驗證碼 / Your code",
-          html: `<div style="font-family:system-ui;padding:24px;background:#111;color:#eee;border-radius:16px">
-            <h2>Schoolink</h2><p>你的登入驗證碼 / Your login code:</p>
-            <div style="font-size:36px;letter-spacing:8px;font-weight:700;color:#9b8cff">${code}</div>
-            <p style="opacity:.6">10 分鐘內有效 / Valid for 10 minutes.</p></div>`,
-        }),
+    if (cfg.mailConfigured) {
+      const sent = await sendMail(env, cfg, {
+        to: email,
+        subject: "Schoolink 校園驗證碼 / Your code",
+        html: otpHtml(code, cfg.schoolName),
       });
-      if (!res.ok) {
+      if (!sent.ok) {
         await env.CACHE.delete(rateKey);
-        return fail(`郵件發送失敗 / Mail error: ${res.status}`, 502);
+        return fail(`郵件發送失敗 / Mail error ${sent.status}: ${sent.detail || "check /admin mail settings"}`, 502);
       }
-      return json({ ok: true, delivery: "email" });
+      return json({ ok: true, delivery: "email", via: cfg.mailSource });
     }
     if (cfg.devOtp) return json({ ok: true, delivery: "dev", code, hint: "本地開發模式：驗證碼已自動填入" });
-    return fail("管理員尚未設定郵件服務（RESEND_API_KEY）/ Mail service not configured", 503);
+    return fail(
+      "尚未設定郵件服務，管理員請到 /admin 填入郵件 API Token 與發件郵箱 / " +
+      "Mail not configured — admin: open /admin and set the mail API token",
+      503
+    );
   }
 
   if (pathname === "/api/auth/otp/verify" && method === "POST") {
@@ -148,6 +149,64 @@ async function route(request, env, url) {
     };
     if (obj.httpEtag) headers.ETag = obj.httpEtag;
     return new Response(method === "HEAD" ? null : obj.body, { status: 200, headers });
+  }
+
+  /* ---------- /admin 后台：独立于校园邮箱登录 ---------- */
+  // 用 GitHub Secret ADMIN_PASSWORD 进入；邮件服务没配好时也能进来配置，不会形成死锁。
+
+  if (pathname === "/api/admin/panel/login" && method === "POST") {
+    if (!env.ADMIN_PASSWORD) {
+      return fail(
+        "尚未設定 ADMIN_PASSWORD：請在 GitHub Secrets 新增後重跑 Action / " +
+        "ADMIN_PASSWORD secret is missing — add it and re-run the workflow",
+        503
+      );
+    }
+    const ip = request.headers.get("CF-Connecting-IP") || "local";
+    const rateKey = `RATE:ADMINLOGIN:${ip}`;
+    const attempts = Number((await env.CACHE.get(rateKey)) || 0);
+    if (attempts >= 5) return fail("嘗試太多次，請 10 分鐘後再試 / Too many attempts, retry in 10 min", 429);
+    const body = await readJson(request);
+    if (!timingSafeEqual(String(body.password || ""), env.ADMIN_PASSWORD)) {
+      await env.CACHE.put(rateKey, String(attempts + 1), { expirationTtl: 600 });
+      return fail("管理員密碼錯誤 / Wrong admin password", 401);
+    }
+    await env.CACHE.delete(rateKey);
+    const { token } = await signSession(env, "admin-panel", "admin");
+    return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, "admin") });
+  }
+
+  if (pathname.startsWith("/api/admin/panel/")) {
+    const adminSession = await verifySession(request, env, "admin");
+    if (pathname === "/api/admin/panel/logout" && method === "POST") {
+      if (adminSession) await env.CACHE.delete(`ADMINSESSION:${adminSession.jti}`);
+      return json({ ok: true }, 200, { "Set-Cookie": clearCookie("admin") });
+    }
+    if (!adminSession && !(await hasPanelAccess(request, env, cfg))) {
+      return fail("需要管理員權限 / Admin only", 401);
+    }
+
+    if (pathname === "/api/admin/panel/state" && method === "GET") {
+      return json({ ok: true, config: adminConfigView(cfg, env), stats: await adminStats(env) });
+    }
+    if (pathname === "/api/admin/panel/config" && method === "POST") {
+      const body = await readJson(request);
+      const next = await saveConfig(env, body);
+      return json({ ok: true, config: adminConfigView(next, env) });
+    }
+    if (pathname === "/api/admin/panel/test-mail" && method === "POST") {
+      const body = await readJson(request);
+      const to = normalizeEmail(body.to);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return fail("請輸入有效郵箱 / Invalid email", 400);
+      const sent = await sendMail(env, cfg, {
+        to,
+        subject: "Schoolink · 郵件設定測試 / Mail config test",
+        html: otpHtml("123456", cfg.schoolName, true),
+      });
+      return sent.ok
+        ? json({ ok: true, status: sent.status, detail: "測試郵件已寄出 / Test mail sent" })
+        : fail(`寄送失敗 ${sent.status}: ${sent.detail || "check the API token & from address"}`, 502);
+    }
   }
 
   /* ---------- 以下需要登录 ---------- */
@@ -240,20 +299,16 @@ async function route(request, env, url) {
   /* ---------- 管理员 ---------- */
 
   if (pathname.startsWith("/api/admin/")) {
-    if (!isAdmin) return fail("需要管理員權限 / Admin only", 403);
+    if (!isAdmin && !(await hasPanelAccess(request, env, cfg))) {
+      return fail("需要管理員權限 / Admin only", 403);
+    }
     if (pathname === "/api/admin/config" && method === "GET") {
-      return json({ ok: true, config: {
-        domains: cfg.domains, r2PublicBaseUrl: cfg.r2PublicBaseUrl,
-        schoolName: cfg.schoolName, updatedAt: cfg.updatedAt,
-      }, stats: await adminStats(env) });
+      return json({ ok: true, config: adminConfigView(cfg, env), stats: await adminStats(env) });
     }
     if (pathname === "/api/admin/config" && method === "POST") {
       const body = await readJson(request);
       const next = await saveConfig(env, body);
-      return json({ ok: true, config: {
-        domains: next.domains, r2PublicBaseUrl: next.r2PublicBaseUrl,
-        schoolName: next.schoolName, updatedAt: next.updatedAt,
-      } });
+      return json({ ok: true, config: adminConfigView(next, env) });
     }
   }
 
@@ -266,4 +321,50 @@ async function readJson(request) {
   } catch {
     return {};
   }
+}
+
+/** /admin 后台会话 或 已登录的 admin 账号，两者皆可管理配置 */
+async function hasPanelAccess(request, env, cfg) {
+  if (await verifySession(request, env, "admin")) return true;
+  const s = await verifySession(request, env, "user");
+  if (!s) return false;
+  const u = await getUserById(env, s.uid);
+  return Boolean(u && (u.role === "admin" || cfg.adminEmails.includes(u.email)));
+}
+
+/** 对外配置视图：只给掩码，绝不回传 mailApiToken 或 ADMIN_PASSWORD */
+function adminConfigView(cfg, env) {
+  return {
+    domains: cfg.domains,
+    r2PublicBaseUrl: cfg.r2PublicBaseUrl,
+    schoolName: cfg.schoolName,
+    adminEmails: cfg.adminEmails,
+    mailFrom: cfg.mailFrom,
+    mailApiBase: cfg.mailApiBase,
+    mailApiTokenMasked: maskToken(cfg.mailApiToken),
+    mailSource: cfg.mailSource,
+    mailConfigured: cfg.mailConfigured,
+    adminPasswordSet: cfg.adminPasswordSet,
+    devOtp: cfg.devOtp,
+    r2Enabled: Boolean(env.IMAGES),
+    updatedAt: cfg.updatedAt,
+  };
+}
+
+function otpHtml(code, schoolName, isTest = false) {
+  const title = isTest ? "郵件設定測試 / Mail config test" : "你的登入驗證碼 / Your login code";
+  return `<div style="font-family:system-ui,-apple-system,sans-serif;padding:28px;background:#141416;color:#f2f2f0;border-radius:18px;max-width:440px">
+    <div style="font-size:20px;font-weight:700;letter-spacing:.5px">🍀 Schoolink</div>
+    <div style="opacity:.55;font-size:12px;margin-top:4px">${escapeHtml(schoolName || "Schoolink")}</div>
+    <p style="margin:26px 0 10px;font-size:14px">${title}</p>
+    <div style="font-size:38px;letter-spacing:10px;font-weight:750;color:#a999ff;background:#202028;padding:16px;border-radius:12px;text-align:center">${code}</div>
+    <p style="opacity:.55;font-size:12px;margin:18px 0 0">${
+      isTest ? "這是一封設定測試郵件，收到即代表設定正確。" : "10 分鐘內有效 / Valid for 10 minutes. 如果不是你本人操作，請忽略此郵件。"
+    }</p>
+  </div>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

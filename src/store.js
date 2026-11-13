@@ -9,26 +9,46 @@ const MSG_CACHE_TTL = 15;
 
 /* ------------------------------ 配置 ------------------------------ */
 
+export function maskToken(token) {
+  const s = String(token || "");
+  if (!s) return "";
+  return `${s.slice(0, 3)}••••••••${s.slice(-4)}`;
+}
+
 export async function loadConfig(env) {
   const saved = await env.CACHE.get("CONFIG:app", "json");
   const domains = saved?.domains?.length
     ? normalizeDomains(saved.domains)
     : normalizeDomains(env.ALLOWED_EMAIL_DOMAINS || "@plkshs.edu.hk");
+
+  // 邮件服务：/admin 网页配置优先，回退到 Worker Secret
+  const mailApiToken = saved?.mailApiToken || env.RESEND_API_KEY || "";
+  const mailFrom = saved?.mailFrom || env.RESEND_FROM || "Schoolink <onboarding@resend.dev>";
+  const mailApiBase = saved?.mailApiBase || "https://api.resend.com";
+
   return {
     domains,
     r2PublicBaseUrl: saved?.r2PublicBaseUrl || env.R2_PUBLIC_BASE_URL || "",
     schoolName: saved?.schoolName || env.SCHOOL_NAME || "Schoolink",
-    adminEmails: String(env.ADMIN_EMAILS || "")
-      .split(",")
+    adminEmails: (saved?.adminEmails?.length
+      ? saved.adminEmails
+      : String(env.ADMIN_EMAILS || "").split(","))
       .map((e) => normalizeEmail(e))
       .filter(Boolean),
     devOtp: String(env.ALLOW_DEV_OTP || "0") === "1",
-    mailConfigured: Boolean(env.RESEND_API_KEY),
+    // 以下字段只在服务端使用，绝不能整包返回给前端
+    mailApiToken,
+    mailFrom,
+    mailApiBase,
+    mailSource: saved?.mailApiToken ? "panel" : env.RESEND_API_KEY ? "secret" : "none",
+    mailConfigured: Boolean(mailApiToken),
+    adminPasswordSet: Boolean(env.ADMIN_PASSWORD),
     updatedAt: saved?.updatedAt || null,
   };
 }
 
 export async function saveConfig(env, patch) {
+  const saved = (await env.CACHE.get("CONFIG:app", "json")) || {};
   const current = await loadConfig(env);
   const next = {
     domains: patch.domains !== undefined ? normalizeDomains(patch.domains) : current.domains,
@@ -38,11 +58,40 @@ export async function saveConfig(env, patch) {
     schoolName: patch.schoolName !== undefined
       ? String(patch.schoolName).trim().slice(0, 80) || "Schoolink"
       : current.schoolName,
+    adminEmails: patch.adminEmails !== undefined
+      ? (Array.isArray(patch.adminEmails) ? patch.adminEmails : String(patch.adminEmails).split(","))
+          .map((e) => normalizeEmail(e)).filter(Boolean)
+      : current.adminEmails,
+    // 留空 = 不修改；"CLEAR" = 清除并回退到 Worker Secret。绝不把 env 回退值写进 KV
+    mailApiToken: patch.mailApiToken === "CLEAR"
+      ? ""
+      : (patch.mailApiToken ? String(patch.mailApiToken).trim() : (saved.mailApiToken || "")),
+    mailFrom: patch.mailFrom !== undefined
+      ? String(patch.mailFrom).trim().slice(0, 160)
+      : (saved.mailFrom || ""),
+    mailApiBase: patch.mailApiBase !== undefined
+      ? String(patch.mailApiBase).trim().replace(/\/+$/, "")
+      : (saved.mailApiBase || ""),
     updatedAt: Date.now(),
   };
   if (!next.domains.length) throw new Error("至少需要保留一个邮箱后缀");
   await env.CACHE.put("CONFIG:app", JSON.stringify(next));
   return loadConfig(env);
+}
+
+/** 发一封纯文本/HTML 邮件；返回 { ok, status, detail } */
+export async function sendMail(env, cfg, { to, subject, html }) {
+  if (!cfg.mailApiToken) return { ok: false, status: 0, detail: "Mail API token not configured" };
+  const res = await fetch(`${cfg.mailApiBase}/emails`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${cfg.mailApiToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from: cfg.mailFrom, to: [to], subject, html }),
+  });
+  const detail = (await res.text().catch(() => "")).slice(0, 400);
+  return { ok: res.ok, status: res.status, detail };
 }
 
 /* ------------------------------ 用户 ------------------------------ */

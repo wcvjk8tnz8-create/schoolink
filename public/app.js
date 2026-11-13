@@ -17,6 +17,7 @@ const I18N = {
     name: "显示名称", namePh: "例如 陈小明", sid: "学号 / 班号", sidPh: "例如 201A6000",
     back: "返回", loginHint: "只允许 <b>{domains}</b> 校园邮箱。首次登录会自动创建账号。",
     codeSent: "验证码已发送，请查收邮箱", loginNeedEmail: "请输入校园邮箱",
+    mailNotConfigured: "邮件服务尚未配置：注册验证码暂时无法发送。管理员请到 /admin 设置。", goAdmin: "管理后台",
     heroSub: "今天想聊点什么？", heroAsk: "输入消息，发送到校园广场…",
     composerPh: "输入消息…", chatOnline: "在线", chatOffline: "最近活跃",
     chatMembers: "{n} 位成员", noMessages: "还没有消息，打个招呼吧 👋",
@@ -42,6 +43,7 @@ const I18N = {
     name: "顯示名稱", namePh: "例如 陳小明", sid: "學號 / 班號", sidPh: "例如 201A6000",
     back: "返回", loginHint: "只允許 <b>{domains}</b> 校園電郵。首次登入會自動建立帳號。",
     codeSent: "驗證碼已傳送，請查收電郵", loginNeedEmail: "請輸入校園電郵",
+    mailNotConfigured: "電郵服務尚未設定：註冊驗證碼暫時無法傳送。管理員請到 /admin 設定。", goAdmin: "管理後台",
     heroSub: "今天想聊點什麼？", heroAsk: "輸入訊息，傳送到校園廣場…",
     composerPh: "輸入訊息…", chatOnline: "在線", chatOffline: "最近活躍",
     chatMembers: "{n} 位成員", noMessages: "還沒有訊息，打個招呼吧 👋",
@@ -69,6 +71,8 @@ const I18N = {
     name: "Display name", namePh: "e.g. Alex Chan", sid: "Student ID", sidPh: "e.g. 201A6000",
     back: "Back", loginHint: "Only <b>{domains}</b> campus emails are allowed. Your account is created on first sign-in.",
     codeSent: "Code sent — check your inbox", loginNeedEmail: "Enter your campus email",
+    mailNotConfigured: "Mail service is not configured — sign-up codes cannot be sent yet. Admin: open /admin.",
+    goAdmin: "Admin console",
     heroSub: "What would you like to talk about today?", heroAsk: "Write a message to the school plaza…",
     composerPh: "Write a message…", chatOnline: "online", chatOffline: "last seen recently",
     chatMembers: "{n} members", noMessages: "No messages yet — say hi 👋",
@@ -97,7 +101,10 @@ function loadFavs() {
 const state = {
   lang: localStorage.getItem("schoolink.lang") || "zh-CN",
   me: null, isAdmin: false, r2Enabled: true,
-  config: { domains: ["@plkshs.edu.hk"], r2PublicBaseUrl: "", schoolName: "Schoolink" },
+  config: {
+    domains: ["@plkshs.edu.hk"], r2PublicBaseUrl: "", schoolName: "Schoolink",
+    mailConfigured: false, devOtp: false, adminPasswordSet: false,
+  },
   threads: [], messages: [], activeId: null, users: [],
   favs: loadFavs(),
   filter: "all", search: "", draft: "", forceBottom: false,
@@ -209,6 +216,11 @@ function renderLogin() {
     <img class="login-logo" src="/logo.svg" alt="Schoolink">
     <h1>Schoolink</h1>
     <p class="sub">${esc(t("loginSub"))}</p>
+    ${!state.config.mailConfigured && !state.config.devOtp ? `
+      <div class="login-hint" style="border-color:rgba(255,200,87,.28);background:rgba(255,200,87,.07);color:#f0d79a">
+        ⚠ ${esc(t("mailNotConfigured"))}
+        <a href="/admin" style="display:inline-block;margin-top:8px;color:#ffe6ab">→ ${esc(t("goAdmin"))}</a>
+      </div>` : ""}
     ${isEmail ? `
       <div class="field"><label>${esc(t("email"))}</label>
         <input id="login-email" data-model="login.email" data-enter="request-code" value="${esc(state.login.email)}"
