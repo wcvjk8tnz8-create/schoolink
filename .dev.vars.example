@@ -1,0 +1,10 @@
+# 复制为 .dev.vars（不要提交）
+SESSION_SECRET=<local-random-string>
+ALLOWED_EMAIL_DOMAINS=@plkshs.edu.hk
+ADMIN_EMAILS=admin@plkshs.edu.hk
+SCHOOL_NAME=Schoolink 校園
+ALLOW_DEV_OTP=1
+# 生产用 secret 配置，不要写进 wrangler vars：
+# R2_PUBLIC_BASE_URL=https://img.plkshs.edu.hk
+# RESEND_API_KEY=<your-resend-api-key>
+# RESEND_FROM=Schoolink <noreply@your-verified-domain.com>

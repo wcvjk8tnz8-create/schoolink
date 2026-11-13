@@ -1,0 +1,107 @@
+name: Deploy Schoolink
+
+on:
+  # 仓库 → Actions → Deploy Schoolink → Run workflow，填完变量后点一下即可
+  workflow_dispatch:
+  # 也想 push 就自动部署的话，保留下面这段；没填 CLOUDFLARE_ACCOUNT_ID 时会自动跳过，不会红灯
+  push:
+    branches: [main]
+    paths-ignore:
+      - README.md
+      - docs/**
+      - .github/workflows/deploy.yml
+
+concurrency:
+  group: schoolink-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # 手动触发一律执行；push 触发时若还没填环境变量就跳过，避免首次推代码就失败
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.CLOUDFLARE_ACCOUNT_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # ── Secrets（必填 2 个 + 可选 2 个）────────────────────────────
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_FROM: ${{ secrets.RESEND_FROM }}
+      # ── Variables（都有默认值，按需覆盖）──────────────────────────
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: ${{ vars.WORKER_NAME || 'schoolink' }}
+      D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'schoolink-db' }}
+      KV_NAMESPACE_TITLE: ${{ vars.KV_NAMESPACE_TITLE || 'schoolink-cache' }}
+      # 不需要图片 / 没开通 R2 → 设成 false，脚本完全跳过 R2，不会报 already exists
+      ENABLE_R2: ${{ vars.ENABLE_R2 || 'true' }}
+      R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME || 'schoolink-images' }}
+      R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL || '' }}
+      ALLOWED_EMAIL_DOMAINS: ${{ vars.ALLOWED_EMAIL_DOMAINS || '@plkshs.edu.hk' }}
+      ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS || '' }}
+      SCHOOL_NAME: ${{ vars.SCHOOL_NAME || 'Schoolink 校園' }}
+      ALLOW_DEV_OTP: ${{ vars.ALLOW_DEV_OTP || '0' }}
+      CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Validate inputs
+        run: |
+          set -e
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::缺少 Secret：CLOUDFLARE_API_TOKEN"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::缺少 Variable：CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          [ -n "$SESSION_SECRET" ] || { echo "::error::缺少 Secret：SESSION_SECRET（请填一段随机长字符串，否则每次部署会把所有人登出）"; exit 1; }
+          echo "✓ 环境变量齐备"
+
+      - name: Provision D1 / KV / R2 + init schema
+        run: node scripts/provision.mjs
+
+      - name: Deploy Worker
+        run: npx wrangler deploy
+
+      - name: Push Worker secrets
+        run: |
+          set -e
+          printf '%s' "$SESSION_SECRET" | npx wrangler secret put SESSION_SECRET
+          if [ -n "$RESEND_API_KEY" ]; then
+            printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
+            echo "✓ RESEND_API_KEY 已写入"
+          else
+            echo "· 未填 RESEND_API_KEY：生产登录需到 ⚙ 设置里允许 OTP，或补上邮件服务"
+          fi
+          if [ -n "$RESEND_FROM" ]; then
+            printf '%s' "$RESEND_FROM" | npx wrangler secret put RESEND_FROM
+          fi
+          echo "✓ secrets 已生效（云端立即更新，无需再 deploy）"
+
+      - name: Summary
+        run: |
+          R2_LINE="$R2_BUCKET_NAME"
+          case "$ENABLE_R2" in 0|false|no|off|FALSE|False) R2_LINE="已停用（图片功能关闭）";; esac
+          {
+            echo "## 🍀 Schoolink 部署完成"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| Worker | \`$WORKER_NAME\` |"
+            echo "| D1 | \`$D1_DATABASE_NAME\` (表结构已自动建立) |"
+            echo "| KV | \`$KV_NAMESPACE_TITLE\` |"
+            echo "| R2 | \`$R2_LINE\` |"
+            echo "| 邮箱后缀 | \`$ALLOWED_EMAIL_DOMAINS\` |"
+            if [ -n "$CUSTOM_DOMAIN" ]; then echo "| 自定义域 | https://$CUSTOM_DOMAIN |"; else echo "| 访问 | https://$WORKER_NAME.<你的子域>.workers.dev |"; fi
+            echo ""
+            echo "> 管理员在网页 ⚙ 设置里改邮箱后缀 / R2 公网地址，即时生效，不用重跑 Action。"
+          } >> "$GITHUB_STEP_SUMMARY"

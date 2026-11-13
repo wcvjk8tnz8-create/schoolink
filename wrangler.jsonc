@@ -1,0 +1,61 @@
+// ─────────────────────────────────────────────────────────────────────
+// 這是「本地開發範本」。正式部署走 GitHub Actions：
+//   Actions → Deploy Schoolink → 填 Secrets / Variables → Run workflow
+// scripts/provision.mjs 會在 CI 裡覆寫本檔，自動建立並回填 D1 / KV / R2 的真實 ID。
+// 不需要 R2 時把 Variable ENABLE_R2 設為 false：腳本不會建立 bucket，也不會寫入 r2_buckets 綁定。
+// ─────────────────────────────────────────────────────────────────────
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "schoolink",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // 前端静态资源 + /api/* 先走 Worker
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/api"]
+  },
+
+  // D1：账号数据 + 聊天数据（持久化）
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "schoolink-db",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+
+  // KV：会话 / 验证码 / 热配置 / 消息缓存 / 在线状态
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ],
+
+  // R2：图片（Workers 绑定写入，自定义公网域名读取）
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "schoolink-images"
+    }
+  ],
+
+  "vars": {
+    // 初始允许的校园邮箱后缀，逗号分隔；管理员可在「设置」里热更新（存 KV）
+    "ALLOWED_EMAIL_DOMAINS": "@plkshs.edu.hk",
+    // 管理员邮箱，逗号分隔
+    "ADMIN_EMAILS": "admin@plkshs.edu.hk",
+    "SCHOOL_NAME": "Schoolink 校園",
+    // 本地开发时把验证码直接返回给前端；生产必须设为 0 并配置 RESEND_API_KEY
+    "ALLOW_DEV_OTP": "0"
+  }
+
+  // 上线时取消注释，把应用绑到自己的域名（Cloudflare 自动签证书）
+  // ,"routes": [{ "pattern": "chat.plkshs.edu.hk", "custom_domain": true }]
+  // ,"workers_dev": false
+}
