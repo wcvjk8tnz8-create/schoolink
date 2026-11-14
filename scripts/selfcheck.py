@@ -413,7 +413,7 @@ ok("HTML head 声明 PNG 图标", 'icons/icon-192.png' in lay and 'icons/icon-51
 sw_src = text("public/sw.js")
 ok("离线外壳预缓存全部图标", all(x in sw_src for x in
    ["icon-192.png", "icon-512.png", "icon-maskable.png", "apple-touch-icon.png", "icon-badge.png"])
-   and 'schoolink-v3' in sw_src)
+   and 'schoolink-v4' in sw_src)
 ok("通知 badge 指向剪影图标", 'badge: "/icons/icon-badge.png"' in text("lib/store.ts"))
 ok("favicon 与 logo 同一套图形", "M84 100 L110 126 L84 152" in text("public/favicon.svg")
    and "M84 100 L110 126 L84 152" in text("public/logo.svg"))
@@ -575,6 +575,10 @@ ok("原四叶草 logo 未改", 'xmlns="http://www.w3.org/2000/svg"' in text("pub
    and "clover" in text("public/logo.svg").lower() or "logo.svg" in text("public/manifest.webmanifest"))
 ok("M3 深浅预览图齐全", (ROOT / "docs/preview-material3.png").stat().st_size > 40000
    and (ROOT / "docs/preview-material3-light.png").stat().st_size > 40000)
+ok("PWA 主题色与 SW 随 M3 更新", '"theme_color": "#191823"' in text("public/manifest.webmanifest")
+   and 'color: "#fdfbff"' in text("app/layout.tsx")
+   and 'schoolink-v4' in text("public/sw.js")
+   and "background:#191823" in text("public/offline.html"))
 ok("README 说明 Material 3", "Material 3" in text("README.md") and "--md-primary" in text("README.md"))
 
 # ── 汇总 ───────────────────────────────────────────────────────────

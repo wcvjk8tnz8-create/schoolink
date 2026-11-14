@@ -26,8 +26,8 @@ export const viewport: Viewport = {
   maximumScale: 5,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#111113" },
-    { media: "(prefers-color-scheme: light)", color: "#f4f5f8" },
+    { media: "(prefers-color-scheme: dark)", color: "#191823" },
+    { media: "(prefers-color-scheme: light)", color: "#fdfbff" },
   ],
 };
 
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#111113" />
+        <meta name="theme-color" content="#191823" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
       </head>
       <body>{children}</body>

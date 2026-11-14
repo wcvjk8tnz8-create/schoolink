@@ -1,5 +1,5 @@
 /* Schoolink Service Worker — 离线可开、静态资源缓存、API 永不缓存 */
-const CACHE = "schoolink-v3";
+const CACHE = "schoolink-v4";
 const SHELL = [
   "/", "/index.html", "/manifest.webmanifest", "/offline.html",
   "/logo.svg", "/favicon.svg",
