@@ -24,7 +24,6 @@ const DDL: string[] = [
     login_key TEXT NOT NULL DEFAULT '', password_hash TEXT,
     email_bound INTEGER NOT NULL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
-  `CREATE INDEX IF NOT EXISTS idx_users_login ON users(login_key)`,
   `CREATE TABLE IF NOT EXISTS threads (
     id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT, about TEXT NOT NULL DEFAULT '',
     avatar_key TEXT, direct_key TEXT UNIQUE, is_default INTEGER NOT NULL DEFAULT 0,
@@ -120,6 +119,11 @@ export async function ensureSchema(env: Env): Promise<void> {
       } catch { /* duplicate column name / 并发，忽略 */ }
     }
   }
+
+  // 索引必须在 ALTER TABLE 补齐 login_key 之后建立（旧库没有该列）
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_users_login ON users(login_key)").run();
+  } catch { /* noop */ }
 
   // 旧 OTP 账号本来就用校园邮箱注册，自动视为已绑定，避免迁移后无法登录
   try {

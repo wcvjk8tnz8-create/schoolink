@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
   email_bound  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_login ON users(login_key);
+-- idx_users_login 由 Worker 在线迁移在补齐 login_key 列之后建立，避免旧库报错
 
 CREATE TABLE IF NOT EXISTS threads (
   id              TEXT PRIMARY KEY,

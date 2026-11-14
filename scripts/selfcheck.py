@@ -450,6 +450,10 @@ ok("登录页三种入口齐全", all(x in login_ui for x in
    ["loginWithPassword", "register", "requestCode", "bindRequest", "enterChat"]))
 ok("迁移补齐 v4 身份列", all(c in text("worker/migrate.ts") for c in
    ["class_name", "student_no", "login_key", "password_hash", "email_bound"]))
+ok("旧库初始化不会因新列索引报错",
+   "CREATE INDEX IF NOT EXISTS idx_users_login" not in text("schema.sql")
+   and 'ALTER TABLE' in text("worker/migrate.ts")
+   and 'CREATE INDEX IF NOT EXISTS idx_users_login ON users(login_key)' in text("worker/migrate.ts"))
 
 ok("AI 闲置 1 分钟触发", "IDLE_MS" in ai_lib and "60_000" in ai_lib
    and "schoolink.ai.last" in ai_ui and "aiIdle" in ai_ui)
