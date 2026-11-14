@@ -97,6 +97,7 @@ interface State {
   adminSave: () => Promise<void>;
   adminTestMail: (to: string) => Promise<void>;
   adminToggleBan: (userId: string, banned: boolean) => Promise<void>;
+  adminTestAI: (model: string) => Promise<{ model: string; reply: string }>;
   adminCreateUser: (input: {
     class_name: string; student_no: string; display_name: string;
     email?: string; password?: string; role?: string;
@@ -422,6 +423,8 @@ export const useApp = create<State>((set, get) => ({
         mailApiBase: r.config.mailApiBase || "",
         mailApiToken: "", testTo: "",
         requireBoundEmail: r.config.requireBoundEmail ? "1" : "0",
+        aiModel: r.config.aiModel || "@cf/meta/llama-3.1-8b-instruct",
+        aiAllowUserModel: r.config.aiAllowUserModel === false ? "0" : "1",
       },
     });
     await get().adminLoad();
@@ -445,6 +448,8 @@ export const useApp = create<State>((set, get) => ({
           mailApiBase: r.config.mailApiBase || "",
           mailApiToken: "", testTo: "",
           requireBoundEmail: r.config.requireBoundEmail ? "1" : "0",
+          aiModel: r.config.aiModel || "@cf/meta/llama-3.1-8b-instruct",
+          aiAllowUserModel: r.config.aiAllowUserModel === false ? "0" : "1",
         },
       });
       try {
@@ -461,6 +466,7 @@ export const useApp = create<State>((set, get) => ({
       domains: f.domains, adminEmails: f.adminEmails, schoolName: f.schoolName,
       r2PublicBaseUrl: f.r2PublicBaseUrl, mailFrom: f.mailFrom, mailApiBase: f.mailApiBase,
       requireBoundEmail: f.requireBoundEmail === "1",
+      aiModel: f.aiModel, aiAllowUserModel: f.aiAllowUserModel === "1",
     };
     if (f.mailApiToken?.trim()) body.mailApiToken = f.mailApiToken.trim();
     const r = await post<{ config: Config }>("/api/admin/panel/config", body);
@@ -474,6 +480,9 @@ export const useApp = create<State>((set, get) => ({
   adminToggleBan: async (userId, banned) => {
     await post("/api/admin/panel/users/ban", { userId, banned });
     set({ adminUsers: get().adminUsers.map((u) => u.id === userId ? { ...u, banned } : u) });
+  },
+  adminTestAI: async (model) => {
+    return post<{ model: string; reply: string }>("/api/admin/panel/test-ai", { model });
   },
   adminCreateUser: async (input) => {
     await post("/api/admin/panel/users/create", input);

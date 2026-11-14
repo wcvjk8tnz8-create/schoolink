@@ -33,6 +33,10 @@ const SCHOOL_NAME = env.SCHOOL_NAME || "Schoolink 校園";
 const ALLOW_DEV_OTP = /^(1|true|yes|on)$/i.test(String(env.ALLOW_DEV_OTP ?? "0")) ? "1" : "0";
 const R2_PUBLIC_BASE_URL = ENABLE_R2 ? (env.R2_PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "") : "";
 const REQUIRE_BOUND_EMAIL = /^(1|true|yes|on)$/i.test(String(env.REQUIRE_BOUND_EMAIL ?? "0")) ? "1" : "0";
+// 默认模型必须是合法 Workers AI ID；非法值直接回退预设，不让部署挂掉
+const AI_MODEL = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._\/-]*$/i.test(String(env.AI_MODEL || ""))
+  ? String(env.AI_MODEL).trim() : "@cf/meta/llama-3.1-8b-instruct";
+const AI_ALLOW_USER_MODEL = /^(0|false|no|off)$/i.test(String(env.AI_ALLOW_USER_MODEL ?? "1")) ? "0" : "1";
 
 const BASE = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}`;
 const log = (...a) => console.log("  ", ...a);
@@ -157,7 +161,8 @@ const config = {
   ai: { binding: "AI" },
   durable_objects: { bindings: [{ name: "REALTIME", class_name: "RealtimeHub" }] },
   migrations: [{ tag: "v1", new_sqlite_classes: ["RealtimeHub"] }],
-  vars: { ALLOWED_EMAIL_DOMAINS, ADMIN_EMAILS, SCHOOL_NAME, ALLOW_DEV_OTP, R2_PUBLIC_BASE_URL, REQUIRE_BOUND_EMAIL },
+  vars: { ALLOWED_EMAIL_DOMAINS, ADMIN_EMAILS, SCHOOL_NAME, ALLOW_DEV_OTP, R2_PUBLIC_BASE_URL,
+    REQUIRE_BOUND_EMAIL, AI_MODEL, AI_ALLOW_USER_MODEL },
   ...(CUSTOM_DOMAIN ? { routes: [{ pattern: CUSTOM_DOMAIN, custom_domain: true }], workers_dev: false } : {}),
 };
 

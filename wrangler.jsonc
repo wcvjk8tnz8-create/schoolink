@@ -41,6 +41,8 @@
     "SCHOOL_NAME": "保良局蕭漢森小學",
     "ALLOW_DEV_OTP": "0",
     "REQUIRE_BOUND_EMAIL": "0",
+    "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+    "AI_ALLOW_USER_MODEL": "1",
     "R2_PUBLIC_BASE_URL": ""
   }
 }

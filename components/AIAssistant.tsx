@@ -15,6 +15,7 @@ import { TypingDots } from "./ui";
 import { askAI, loadAIChat, saveAIChat, localChatReply, IDLE_PROMPT, IDLE_MS, AI_COOLDOWN_MS,
   type AIChatMessage } from "@/lib/ai";
 import type { Lang } from "@/lib/types";
+import { DEFAULT_AI_MODEL } from "@/lib/ai-models";
 
 function L(lang: Lang, cn: string, hk: string, en: string): string {
   return lang === "en" ? en : lang === "zh-HK" ? hk : cn;
@@ -34,12 +35,17 @@ export default function AIAssistant() {
   const aiOpen = useApp((s) => s.aiOpen);
   const setAiOpen = useApp((s) => s.setAiOpen);
   const idleEnabled = usePrefs((s) => s.aiIdle);
+  const aiModel = usePrefs((s) => s.aiModel);
+  const cfg = useApp((s) => s.config);
+  // 管理员可在 /admin 关掉学生自选；关掉后一律跟随学校默认
+  const model = cfg.aiAllowUserModel === false ? "" : (aiModel || "");
   const [bubble, setBubble] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [idleText, setIdleText] = useState("");
   const [chat, setChat] = useState<AIChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [activeModel, setActiveModel] = useState("");
   const armRef = useRef<() => void>(() => {});
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -70,7 +76,8 @@ export default function AIAssistant() {
       if (Date.now() - last < AI_COOLDOWN_MS) { arm(); return; }
       localStorage.setItem("schoolink.ai.last", String(Date.now()));
       setBubble(true); setThinking(true);
-      const r = await askAI(IDLE_PROMPT, [], useApp.getState().lang);
+      const r = await askAI(IDLE_PROMPT, [], useApp.getState().lang, model);
+      setActiveModel(r.model || "");
       setIdleText(localizeIdle(r.reply, useApp.getState().lang));
       setThinking(false);
       arm();
@@ -86,7 +93,7 @@ export default function AIAssistant() {
       events.forEach((e) => window.removeEventListener(e, onActivity));
       document.removeEventListener("visibilitychange", onActivity);
     };
-  }, [view, idleEnabled, lang]);
+  }, [view, idleEnabled, lang, model]);
 
   const dismiss = () => { setBubble(false); armRef.current(); };
   const openChat = () => { setBubble(false); setAiOpen(true); };
@@ -99,7 +106,8 @@ export default function AIAssistant() {
     setChat(next);
     let answer: AIChatMessage;
     try {
-      const r = await askAI(text, next.filter((m) => m.role === "user" || m.role === "assistant"), lang);
+      const r = await askAI(text, next.filter((m) => m.role === "user" || m.role === "assistant"), lang, model);
+      setActiveModel(r.model || "");
       answer = { role: "assistant", content: r.reply };
     } catch {
       answer = { role: "assistant", content: localChatReply(text, lang) };
@@ -167,7 +175,9 @@ export default function AIAssistant() {
                 placeholder={L(lang, "说点什么…", "講啲嘢…", "Say something…")} maxLength={500} />
               <button onClick={send} disabled={!draft.trim() || sending} aria-label="send"><Icon name="send" size={17} /></button>
             </div>
-            <div className="ai-foot">{L(lang,
+            <div className="ai-foot"><span className="ai-model-tag">
+                <Icon name="bolt" size={11} /> {activeModel || model || cfg.aiModel || DEFAULT_AI_MODEL}
+              </span> · {L(lang,
               "回答由 Schoolink AI 生成，重要事情请向老师确认",
               "回答由 Schoolink AI 生成，重要事情請向老師確認",
               "AI-generated replies — check important matters with a teacher")}</div>

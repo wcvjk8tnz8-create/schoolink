@@ -50,6 +50,8 @@ v2 用 **TypeScript 全量重写**：前端 Next.js 16 静态导出 + React 19 +
 | `ALLOWED_EMAIL_DOMAINS` | `@plkshs.edu.hk` | 逗号分隔可填多个 |
 | `ADMIN_EMAILS` | 自动推导 | 逗号分隔 |
 | `SCHOOL_NAME` | `保良局蕭漢森小學` | 验证码邮件里显示，可在 `/admin` 改 |
+| `AI_MODEL` | `@cf/meta/llama-3.1-8b-instruct` | Workers AI 默认模型 ID；/admin 可热改 |
+| `AI_ALLOW_USER_MODEL` | `1` | `0` = 全校统一模型，学生设置里不可自选 |
 | `REQUIRE_BOUND_EMAIL` | `0` | 设为 `1` 强制绑定校园邮箱才能登入（也可在 /admin 勾） |
 | `ENABLE_R2` | `true` | **`false` = 完全不调用 R2 API**，附件功能自动隐藏 |
 | `R2_BUCKET_NAME` | `schoolink-images` | |
@@ -106,6 +108,16 @@ AI助手，你现在要说一段话，内容是：聊天吗？
 ```
 
 服务端优先跑 **Workers AI**（`AI` 绑定由 provision 自动写入，账户没开通会自动降级），指示式提示词直接回「聊天吗？」；普通聊天走 `@cf/meta/llama-3.1-8b-instruct`，再不行用本地兜底 —— **离线也不会点出空白**。气泡是 WhatsApp 风格，点「聊聊」展开对话面板，侧栏笑脸按钮可随时手动叫出来，设置中心可关掉自动弹出（3 分钟冷却防刷屏）。
+
+### AI 模型：在设置里配置
+
+**管理员（全局）**：`/admin` → 「AI 助手 · 模型」→ 从 6 个 Workers AI 文字模型里选（Llama 3.1 8B / 70B、Llama 3 8B、Mistral 7B、Qwen 14B、Gemma 7B），或自填 `@厂商/模型` ID → **测试这个模型**（直接调一次 `AI.run` 看回覆）→ 底部「储存设定」。存进 KV 热配置，**即时生效、不用重新部署**，也可用 Variables `AI_MODEL` 预设默认值。
+
+**学生（本机）**：设置中心 → 「AI 助手」→ 模型下拉，可选「跟随学校默认」或任一预设，也能自填 ID；偏好存本机 localStorage，换设备不跟随。管理员可勾掉「允许学生自选模型」，关掉后全校统一用后台设的那个，设置里显示只读说明。
+
+服务端只接受合法 Workers AI 模型 ID（`/^@[a-z0-9...]/.../`），非法 ID 保存时直接 400；学生自选也走同一白名单，不能塞 URL 或乱填。模型响应会回传 `model` 字段，AI 面板底部显示当前生效模型。账户没开通 Workers AI 时测试会回 503，但**设定照样保存**，助手自动用本地回覆兜底，不会空白。
+
+> 闲置 1 分钟那句「聊天吗？」属于指示式提示词，为保证准时出现会直接回显；模型配置作用于展开后的对话面板。
 
 ### PWA 安装按钮：不再点了没反应
 
@@ -267,6 +279,9 @@ wrangler dev           # 会同时跑 Worker + 静态资源 + DO
 
 ### 头像还是撑爆弹窗？
 清一次浏览器缓存即可（SW 缓存已升到 `schoolink-v3`）；新版本对任何 `<img>` 头像都强制限尺寸。
+
+### AI 测试回 503 / 模型没有回传内容？
+503 表示这个 Cloudflare 账号没绑定或未开通 Workers AI —— 设定仍会保存，助手自动本地兜底。502 通常是模型 ID 在该账号不可用（例如 70B 需要付费额度），换回 `@cf/meta/llama-3.1-8b-instruct` 或到 Cloudflare AI → Models 确认可用名称。模型 ID 格式必须是 `@厂商/模型`，不接受 URL。
 
 ## 六、目录
 

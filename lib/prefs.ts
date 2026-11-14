@@ -57,6 +57,8 @@ export interface Prefs {
   sendWithEnter: boolean;
   notifications: boolean;
   aiIdle: boolean;
+  /** 本机 AI 模型覆盖；空字符串 = 跟随学校在 /admin 设的默认模型 */
+  aiModel: string;
   quickPhrases: string[];
   /** 会话静音到期时间戳；0 = 未静音，Infinity 存成 4102444800000（2100 年） */
   muteUntil: Record<string, number>;
@@ -79,6 +81,7 @@ const DEFAULTS = {
   sendWithEnter: true,
   notifications: true,
   aiIdle: true,
+  aiModel: "",
   quickPhrases: [...DEFAULT_PHRASES],
   muteUntil: {} as Record<string, number>,
 };
@@ -96,10 +99,10 @@ function load(): typeof DEFAULTS {
 
 function persist(state: Prefs) {
   const { accent, wallpaper, font, compact, animations, clock, sendWithEnter,
-    notifications, aiIdle, quickPhrases, muteUntil } = state;
+    notifications, aiIdle, aiModel, quickPhrases, muteUntil } = state;
   try {
     localStorage.setItem(KEY, JSON.stringify({ accent, wallpaper, font, compact, animations,
-      clock, sendWithEnter, notifications, aiIdle, quickPhrases, muteUntil }));
+      clock, sendWithEnter, notifications, aiIdle, aiModel, quickPhrases, muteUntil }));
   } catch { /* 隐私模式下不持久化，内存里仍生效 */ }
 }
 

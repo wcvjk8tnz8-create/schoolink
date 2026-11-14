@@ -15,6 +15,7 @@ import { ACCENTS, WALLPAPERS, FONTS, THREAD_ACCENTS, usePrefs, muteOptions, type
 import { LANGS, LANG_LABEL } from "@/lib/i18n";
 import type { Lang, Theme, Thread } from "@/lib/types";
 import { cx } from "@/lib/utils";
+import { AI_MODEL_PRESETS, DEFAULT_AI_MODEL } from "@/lib/ai-models";
 
 type Lang3 = Lang;
 function L(lang: Lang3, cn: string, hk: string, en: string): string {
@@ -352,10 +353,19 @@ function AppearancePrefs() {
 
 function ToolsPrefs() {
   const lang = useApp((s) => s.lang);
+  const cfg = useApp((s) => s.config);
   const p = usePrefs();
   const activeId = useApp((s) => s.activeId);
   const [phrase, setPhrase] = useState("");
   const [muteOpen, setMuteOpen] = useState(false);
+
+  const aiModelList = cfg.aiModels?.length ? cfg.aiModels : AI_MODEL_PRESETS;
+  const schoolAiModel = cfg.aiModel || DEFAULT_AI_MODEL;
+  const aiModelOptions = aiModelList.some((m) => m.id === schoolAiModel)
+    ? aiModelList
+    : [...aiModelList, { id: schoolAiModel, label: schoolAiModel, hint: "" }];
+  const aiModelCustom = Boolean(p.aiModel) && !aiModelOptions.some((m) => m.id === p.aiModel);
+  const aiModelLocked = cfg.aiAllowUserModel === false;
 
   const askNotification = async (on: boolean) => {
     if (on && typeof Notification !== "undefined" && Notification.permission === "default") {
@@ -454,6 +464,33 @@ function ToolsPrefs() {
           hint={L(lang, "系统会发一句「聊天吗？」给 AI 助手，像 WhatsApp 气泡一样弹出",
             "系統會送一句「聊天嗎？」俾 AI 助手，似 WhatsApp 氣泡咁彈出",
             "Sends a prompt to the AI and shows a WhatsApp-style bubble")} />
+        <div className="ai-model-box">
+          <div className="ai-model-row">
+            <span className="ai-model-label"><Icon name="bolt" size={14} />
+              {L(lang, "模型", "模型", "Model")}</span>
+            <select value={p.aiModel || ""} disabled={aiModelLocked}
+              onChange={(e) => p.patch("aiModel", e.target.value)}>
+              <option value="">{L(lang, "跟随学校默认", "跟隨學校預設", "Follow school default")} · {schoolAiModel}</option>
+              {aiModelOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </div>
+          {!aiModelLocked && (
+            <div className="field"><label>{L(lang, "或自填模型 ID", "或自填模型 ID", "Or enter a model ID")}
+              <span className="hint">@vendor/model</span></label>
+              <input value={aiModelCustom ? p.aiModel : ""} onChange={(e) => p.patch("aiModel", e.target.value)}
+                placeholder="@cf/meta/llama-3.1-8b-instruct" />
+            </div>
+          )}
+          <div className="ai-model-now">
+            <span className={`au-badge ${cfg.aiEnabled ? "on" : "warn"}`}>
+              {cfg.aiEnabled ? "Workers AI" : L(lang, "本地兜底", "本地兜底", "Local fallback")}</span>
+            <code>{p.aiModel || schoolAiModel}</code>
+          </div>
+          {aiModelLocked && <p className="muted-line">{L(lang,
+            "学校已在 /admin 统一设定模型，此处由管理员管理。",
+            "學校已喺 /admin 統一設定模型，此處由管理員管理。",
+            "The school has set a fixed model in /admin.")}</p>}
+        </div>
         <button className="btn small" onClick={() => useApp.getState().setAiOpen(true)}>
           <Icon name="send" size={14} /> {L(lang, "现在找 AI 助手聊天", "而家搵 AI 助手傾偈", "Chat with AI now")}
         </button>

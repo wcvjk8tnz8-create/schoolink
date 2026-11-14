@@ -6,6 +6,7 @@
  */
 import { post } from "./api";
 import type { Lang } from "./types";
+import { AI_MODEL_PRESETS } from "./ai-models";
 
 export const IDLE_MINUTES = 1;
 export const IDLE_MS = IDLE_MINUTES * 60_000;
@@ -14,7 +15,7 @@ export const AI_COOLDOWN_MS = 3 * 60_000;
 export const IDLE_PROMPT = "AI助手，你现在要说一段话，内容是：聊天吗？";
 
 export interface AIChatMessage { role: "user" | "assistant"; content: string }
-export interface AIAnswer { reply: string; local: boolean; source?: string }
+export interface AIAnswer { reply: string; local: boolean; source?: string; model?: string }
 
 const FALLBACK: Record<Lang, string> = {
   "zh-CN": "我在这儿呀～ 想聊点什么？",
@@ -22,12 +23,14 @@ const FALLBACK: Record<Lang, string> = {
   en: "I'm right here. What shall we talk about?",
 };
 
-export async function askAI(prompt: string, history: AIChatMessage[] = [], lang: Lang = "zh-HK"): Promise<AIAnswer> {
+export async function askAI(
+  prompt: string, history: AIChatMessage[] = [], lang: Lang = "zh-HK", model = "",
+): Promise<AIAnswer> {
   try {
-    const r = await post<{ reply: string; local: boolean; source?: string }>("/api/ai", {
-      prompt, history, lang,
+    const r = await post<{ reply: string; local: boolean; source?: string; model?: string }>("/api/ai", {
+      prompt, history, lang, ...(model ? { model } : {}),
     });
-    if (r?.reply) return { reply: r.reply, local: Boolean(r.local), source: r.source };
+    if (r?.reply) return { reply: r.reply, local: Boolean(r.local), source: r.source, model: r.model };
   } catch { /* 离线 / 限流 → 本地兜底 */ }
   return { reply: FALLBACK[lang] || FALLBACK["zh-HK"], local: true, source: "offline" };
 }
@@ -49,6 +52,7 @@ export function localChatReply(prompt: string, lang: Lang): string {
 }
 
 const KEY = "schoolink.ai.chat";
+export { AI_MODEL_PRESETS };
 export function loadAIChat(): AIChatMessage[] {
   try {
     const a = JSON.parse(localStorage.getItem(KEY) || "[]");

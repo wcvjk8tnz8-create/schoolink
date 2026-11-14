@@ -27,4 +27,6 @@ interface Env {
   ALLOW_DEV_OTP?: string;
   R2_PUBLIC_BASE_URL?: string;
   REQUIRE_BOUND_EMAIL?: string;
+  AI_MODEL?: string;
+  AI_ALLOW_USER_MODEL?: string;
 }

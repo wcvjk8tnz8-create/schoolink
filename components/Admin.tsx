@@ -9,6 +9,7 @@ import { Avatar, IconButton, Spinner, softSpring } from "./ui";
 import { Icon } from "./Icon";
 import { LANGS, LANG_LABEL } from "@/lib/i18n";
 import type { Lang } from "@/lib/types";
+import { AI_MODEL_PRESETS, DEFAULT_AI_MODEL } from "@/lib/ai-models";
 
 function L(lang: Lang, cn: string, hk: string, en: string): string {
   return lang === "en" ? en : lang === "zh-HK" ? hk : cn;
@@ -102,6 +103,10 @@ function AdminConsole() {
   const [testBusy, setTestBusy] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [aiResult, setAiResult] = useState("");
+  const [aiError, setAiError] = useState("");
   const [nu, setNuState] = useState({ class_name: "", student_no: "", display_name: "", email: "", password: "", role: "user" });
   const setNu = (k: keyof typeof nu, v: string) => setNuState((x) => ({ ...x, [k]: v }));
   const openConsole = () => {
@@ -119,6 +124,16 @@ function AdminConsole() {
       setNuState({ class_name: "", student_no: "", display_name: "", email: "", password: "", role: "user" });
     } catch (e) { useApp.getState().toastMsg((e as Error).message, "err"); }
     finally { setAddBusy(false); }
+  };
+  const aiModels = cfg.aiModels?.length ? cfg.aiModels : AI_MODEL_PRESETS;
+  const aiIsCustom = Boolean(f.aiModel) && !aiModels.some((m) => m.id === f.aiModel);
+  const testAI = async () => {
+    setAiBusy(true); setAiError(""); setAiResult("");
+    try {
+      const r = await useApp.getState().adminTestAI(f.aiModel || DEFAULT_AI_MODEL);
+      setAiResult(`${r.model} — ${r.reply}`);
+    } catch (e) { setAiError((e as Error).message); }
+    finally { setAiBusy(false); }
   };
   const resetPw = async (userId: string) => {
     const pw = window.prompt(L(lang, "输入新密码（至少 6 位）", "輸入新密碼（至少 6 位）", "New password (min. 6 chars)"));
@@ -199,6 +214,64 @@ function AdminConsole() {
             <button className="btn" onClick={test} disabled={testBusy || !f.testTo}>
               {testBusy ? <Spinner size={14} /> : t("sendTest")}</button>
           </div>
+        </Panel>
+
+        <Panel title={L(lang, "AI 助手 · 模型", "AI 助手 · 模型", "AI assistant · Model")} icon="smile"
+          desc={L(lang,
+            "选一个 Workers AI 文字模型，保存后即时生效，无需重新部署；也可在 Variables 用 AI_MODEL 预设。",
+            "揀一個 Workers AI 文字模型，儲存後即時生效，唔使重新部署；亦可用 Variables 嘅 AI_MODEL 預設。",
+            "Pick a Workers AI text model. Saved instantly, no redeploy; AI_MODEL variable sets the default.")} delay={0.12}>
+          <div className="ai-cfg-current">
+            <Icon name="bolt" size={14} />
+            <span>{L(lang, "当前默认", "目前預設", "Current default")}</span>
+            <code>{cfg.aiModel || DEFAULT_AI_MODEL}</code>
+            <span className={`au-badge ${cfg.aiEnabled ? "on" : "warn"}`}>
+              {cfg.aiEnabled ? L(lang, "Workers AI 已绑定", "Workers AI 已綁定", "Workers AI bound")
+                : L(lang, "本地兜底", "本地兜底", "Local fallback")}</span>
+          </div>
+          <Field label={L(lang, "模型", "模型", "Model")} hint={L(lang, "选预设或自填 ID", "揀預設或自填 ID", "Preset or custom ID")}>
+            <select className="ai-cfg-select" value={(aiIsCustom || customOpen) ? "__custom__" : (f.aiModel || DEFAULT_AI_MODEL)}
+              onChange={(e) => {
+                if (e.target.value === "__custom__") setCustomOpen(true);
+                else { setCustomOpen(false); setF("aiModel", e.target.value); }
+              }}>
+              {aiModels.map((m) => (
+                <option key={m.id} value={m.id}>{m.label} · {m.hint}</option>
+              ))}
+              <option value="__custom__">{L(lang, "自定义模型 ID…", "自訂模型 ID…", "Custom model ID…")}</option>
+            </select>
+          </Field>
+          {(aiIsCustom || customOpen) && (
+            <Field label={L(lang, "自定义模型 ID", "自訂模型 ID", "Custom model ID")} hint="@vendor/model">
+              <input value={f.aiCustom || (aiIsCustom ? f.aiModel : "") || ""}
+                onChange={(e) => { setF("aiCustom", e.target.value); setF("aiModel", e.target.value); }}
+                placeholder="@cf/meta/llama-3.1-8b-instruct" />
+            </Field>
+          )}
+          <label className="admin-check"><input type="checkbox" checked={f.aiAllowUserModel !== "0"}
+            onChange={(e) => setF("aiAllowUserModel", e.target.checked ? "1" : "0")} />
+            <span><strong>{L(lang, "允许学生在「设置 → AI 助手」自选模型", "容許學生喺「設定 → AI 助手」自選模型",
+              "Let students pick a model in Settings → AI assistant")}</strong>
+            <small>{L(lang, "关闭后全校统一用上面这个模型；开启时学生只能从合法模型 ID 里选",
+              "關閉後全校統一用上面呢個模型；開啟時學生只可揀合法模型 ID",
+              "Off = school-wide model; on = students choose among valid model IDs")}</small></span></label>
+          <div className="inline ai-cfg-test">
+            <button className="btn" onClick={testAI} disabled={aiBusy || !f.aiModel}>
+              {aiBusy ? <Spinner size={14} /> : <Icon name="beaker" size={14} />}
+              {L(lang, "测试这个模型", "測試呢個模型", "Test this model")}
+            </button>
+            <button className="btn" onClick={() => { setCustomOpen(false); setF("aiModel", DEFAULT_AI_MODEL); }}>
+              <Icon name="refresh" size={14} /> {L(lang, "回预设", "回預設", "Reset")}
+            </button>
+          </div>
+          {aiResult && <motion.div className="ai-cfg-ok" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
+            <Icon name="check" size={15} /> {aiResult}</motion.div>}
+          {aiError && <motion.div className="ai-cfg-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <Icon name="warning" size={15} /> {aiError}</motion.div>}
+          <p className="muted-line">{L(lang,
+            "若账户未开通 Workers AI，测试会提示 503，但模型设置照样保存，AI 助手自动用本地回复兜底，不会空白。",
+            "若帳號未開通 Workers AI，測試會提示 503，但模型設定照樣儲存，AI 助手自動用本地回覆兜底，唔會空白。",
+            "If Workers AI isn't enabled, testing returns 503 but settings still save and the assistant falls back locally.")}</p>
         </Panel>
 
         <div className="admin-col">

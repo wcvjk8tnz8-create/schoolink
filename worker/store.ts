@@ -1,4 +1,5 @@
 import { normalizeDomains, normalizeEmail, normClass, normStudentNo, loginKeyOf, isPlaceholderEmail } from "./auth";
+import { DEFAULT_AI_MODEL, normalizeAiModel } from "./ai-models";
 import { kvPut } from "./kv";
 import { uid } from "./util";
 
@@ -17,6 +18,10 @@ export interface AppConfig {
   adminPasswordSet: boolean;
   devOtp: boolean;
   requireBoundEmail: boolean;
+  /** 全局 AI 模型（管理员在 /admin 热配置） */
+  aiModel: string;
+  /** 是否允许学生在「设置 → AI 助手」里为这台设备覆盖模型 */
+  aiAllowUserModel: boolean;
   updatedAt: number | null;
 }
 
@@ -47,6 +52,8 @@ export interface ConfigPatch {
   mailFrom?: string;
   mailApiBase?: string;
   requireBoundEmail?: boolean | string;
+  aiModel?: string;
+  aiAllowUserModel?: boolean | string;
 }
 
 const THREAD_CACHE_TTL = 60;
@@ -86,6 +93,10 @@ export async function loadConfig(env: Env): Promise<AppConfig> {
     devOtp: String(env.ALLOW_DEV_OTP || "0") === "1",
     requireBoundEmail: s.requireBoundEmail === true || s.requireBoundEmail === "1"
       || (s.requireBoundEmail === undefined && String(env.REQUIRE_BOUND_EMAIL || "0") === "1"),
+    aiModel: normalizeAiModel(s.aiModel || env.AI_MODEL, DEFAULT_AI_MODEL),
+    aiAllowUserModel: s.aiAllowUserModel === undefined
+      ? !/^(0|false|no|off)$/i.test(String(env.AI_ALLOW_USER_MODEL ?? "1"))
+      : (s.aiAllowUserModel === true || s.aiAllowUserModel === "1"),
     updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : null,
   };
 }
@@ -115,6 +126,13 @@ export async function saveConfig(env: Env, patch: ConfigPatch): Promise<AppConfi
     requireBoundEmail: patch.requireBoundEmail !== undefined
       ? (patch.requireBoundEmail === true || patch.requireBoundEmail === "1" || patch.requireBoundEmail === "on")
       : cur.requireBoundEmail,
+    // "CLEAR" 回预设；留空不修改
+    aiModel: patch.aiModel && patch.aiModel !== "CLEAR"
+      ? normalizeAiModel(patch.aiModel, cur.aiModel)
+      : patch.aiModel === "CLEAR" ? DEFAULT_AI_MODEL : cur.aiModel,
+    aiAllowUserModel: patch.aiAllowUserModel !== undefined
+      ? (patch.aiAllowUserModel === true || patch.aiAllowUserModel === "1" || patch.aiAllowUserModel === "on")
+      : cur.aiAllowUserModel,
     updatedAt: Date.now(),
   };
   if (!(next.domains as string[]).length) throw new Error("至少需要保留一个邮箱后缀");

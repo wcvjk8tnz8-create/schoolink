@@ -66,6 +66,7 @@ REQUIRED = [
     "lib/prefs.ts", "lib/m4a.ts", "lib/faces.ts",
     "components/AvatarPicker.tsx", "components/Customize.tsx", "scripts/gen-icons.mjs",
     "components/AIAssistant.tsx", "components/InstallGuide.tsx", "lib/ai.ts", "worker/password.ts",
+    "lib/ai-models.ts", "worker/ai-models.ts",
     "worker/chat-room.ts", "worker/env.d.ts", "worker/util.ts", "worker/tsconfig.json",
     "public/manifest.webmanifest", "public/sw.js", "public/offline.html",
     "public/logo.svg", "public/favicon.svg",
@@ -476,6 +477,50 @@ ok("头像图片显式限尺寸", "style={{ width: size, height: size }}" in pic
    and ".av-visual.av-img" in css2 and "max-width:100%" in css2)
 ok("自定义中心有绑定/安装/AI 开关", all(x in text("components/Customize.tsx") for x in
    ["bindRequest", "setPassword", "doInstall", "setInstallGuide", "aiIdle"]))
+
+
+# ── 17. AI 模型可在设置里配置 ─────────────────────────────────────
+wm = text("worker/ai-models.ts")
+fm = text("lib/ai-models.ts")
+wi3 = text("worker/index.ts")
+ws3 = text("worker/store.ts")
+ai3 = text("lib/ai.ts")
+pr3 = text("lib/prefs.ts")
+st3 = text("lib/store.ts")
+ad3 = text("components/Admin.tsx")
+cu3 = text("components/Customize.tsx")
+as3 = text("components/AIAssistant.tsx")
+cfg3 = text("app/globals.css")
+
+wm_ids = re.findall(r'id:\s*"(@[^"]+)"', wm)
+fm_ids = re.findall(r'id:\s*"(@[^"]+)"', fm)
+ok("前后端 AI 模型预设 ID 完全一致", bool(wm_ids) and wm_ids == fm_ids,
+   f"worker={wm_ids} front={fm_ids}")
+ok("AI 模型 ID 有白名单校验", "export function isValidAiModel" in wm and "/^@[a-z0-9]" in wm
+   and "import { AI_MODEL_PRESETS, DEFAULT_AI_MODEL, isValidAiModel }" in wi3
+   and "isValidAiModel(requested)" in wi3 and "!isValidAiModel(patch.aiModel)" in wi3)
+ok("全局 AI 模型进热配置", "aiModel" in ws3 and "aiAllowUserModel" in ws3
+   and "aiModel: normalizeAiModel" in ws3 and "aiModel: patch.aiModel" in ws3)
+ok("配置视图下发模型与预设", all(x in wi3 for x in
+   ["aiModel: cfg.aiModel", "aiModels: AI_MODEL_PRESETS", "aiAllowUserModel: cfg.aiAllowUserModel"]))
+ok("/api/ai 动态使用所选模型", "env.AI.run(model," in wi3 and "const model = cfg.aiAllowUserModel" in wi3
+   and '@cf/meta/llama-3.1-8b-instruct", {' not in wi3)
+ok("闲置问候响应带模型名", 'source: "direct", model' in wi3)
+ok("管理员可测试模型", '"/api/admin/panel/test-ai"' in wi3 and "adminTestAI" in st3
+   and "testAI" in ad3 and "ai-cfg-ok" in cfg3)
+ok("非法模型 ID 在保存时被拒", wi3.count("Invalid model id") >= 2
+   and "isValidAiModel(patch.aiModel)" in wi3)
+ok("/admin 有模型下拉与自定义", "ai-cfg-select" in ad3 and "customOpen" in ad3
+   and "AI_MODEL_PRESETS" in ad3 and "DEFAULT_AI_MODEL" in ad3)
+ok("设置中心可为本机选模型", "p.patch(\"aiModel\"" in cu3 and "ai-model-box" in cu3
+   and "aiModelLocked" in cu3 and "aiModel" in pr3)
+ok("AI 助手真的把模型发给后端", "askAI(IDLE_PROMPT, [], useApp.getState().lang, model)" in as3
+   and "lang, model)" in as3 and "ai-model-tag" in as3)
+ok("AI 请求携带 model 字段", '...(model ? { model } : {})' in ai3
+   and "model?: string" in ai3 and "model = """ in ai3)
+ok("AI 模型部署变量全链路透传", all("AI_MODEL" in text(f) and "AI_ALLOW_USER_MODEL" in text(f)
+   for f in ["scripts/provision.mjs", ".github/workflows/deploy.yml", "wrangler.jsonc", "worker/env.d.ts", "worker/store.ts"]))
+ok("README 说明 AI 模型配置", "AI 模型" in text("README.md") and "AI_MODEL" in text("README.md"))
 
 # ── 汇总 ───────────────────────────────────────────────────────────
 print(" Schoolink self-check\n")

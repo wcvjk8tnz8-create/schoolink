@@ -767,3 +767,32 @@ input:focus,textarea:focus { border-color:var(--accent) !important; }
   display:grid; place-items:center; font-size:11px; font-weight:700; flex:none; }
 .ig-done { display:flex; align-items:center; gap:9px; padding:14px; border-radius:12px;
   background:rgba(37,194,110,.1); color:var(--green); font-size:12.5px; }
+
+/* ══════════════════════ AI 模型配置（/admin + 设置中心） ══════════════════════ */
+.ai-cfg-current { display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--surface2);
+  border:1px solid var(--line); border-radius:11px; padding:9px 11px; margin-bottom:12px; font-size:11px; color:var(--muted); }
+.ai-cfg-current code, .ai-model-now code { background:var(--bg); border:1px solid var(--line);
+  border-radius:6px; padding:2px 7px; font-size:10.5px; color:var(--accent); word-break:break-all; }
+.ai-cfg-select, .ai-model-row select, .panel select, .pref-section select {
+  width:100%; background:var(--surface2); color:var(--text); border:1px solid var(--line);
+  border-radius:9px; padding:9px 11px; font-size:12.5px; appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+                   linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 52%,calc(100% - 11px) 52%;
+  background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:30px; }
+.ai-cfg-select:focus, .ai-model-row select:focus, .pref-section select:focus {
+  outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.ai-cfg-test { margin-top:10px; flex-wrap:wrap; }
+.ai-cfg-test .btn { flex:1; min-width:130px; justify-content:center; }
+.ai-cfg-ok, .ai-cfg-err { display:flex; align-items:flex-start; gap:8px; margin-top:10px;
+  border-radius:11px; padding:10px 12px; font-size:11.5px; line-height:1.5; word-break:break-word; }
+.ai-cfg-ok { background:rgba(37,194,110,.1); border:1px solid rgba(37,194,110,.28); color:var(--green); }
+.ai-cfg-err { background:rgba(255,107,107,.1); border:1px solid rgba(255,107,107,.28); color:var(--danger); }
+.ai-model-box { background:var(--surface2); border:1px solid var(--line); border-radius:12px;
+  padding:11px; margin:2px 0 12px; }
+.ai-model-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.ai-model-label { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; white-space:nowrap; }
+.ai-model-row select { flex:1; min-width:0; }
+.ai-model-box .field { margin:0 0 10px; }
+.ai-model-now { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ai-model-tag { display:inline-flex; align-items:center; gap:4px; color:var(--accent); font-size:9.5px; }

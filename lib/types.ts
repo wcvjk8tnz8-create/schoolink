@@ -100,6 +100,9 @@ export interface Config {
   r2Enabled: boolean;
   requireBoundEmail?: boolean;
   aiEnabled?: boolean;
+  aiModel?: string;
+  aiAllowUserModel?: boolean;
+  aiModels?: { id: string; label: string; hint: string }[];
   updatedAt?: number | null;
 }
 

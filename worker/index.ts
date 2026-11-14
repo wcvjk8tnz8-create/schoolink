@@ -23,6 +23,7 @@ import {
 } from "./store";
 import { hashPassword, verifyPassword, isStrongPassword } from "./password";
 import { kvPut, KV_MIN_TTL } from "./kv";
+import { AI_MODEL_PRESETS, DEFAULT_AI_MODEL, isValidAiModel } from "./ai-models";
 import { ensureSchema } from "./migrate";
 import { json, fail, readJson, escapeHtml, uid, isSecure, sameOrigin } from "./util";
 
@@ -79,6 +80,10 @@ function configView(cfg: AppConfig, env: Env, full = false) {
     devOtp: cfg.devOtp,
     requireBoundEmail: cfg.requireBoundEmail,
     r2Enabled: Boolean(env.IMAGES),
+    aiModel: cfg.aiModel,
+    aiAllowUserModel: cfg.aiAllowUserModel,
+    aiModels: AI_MODEL_PRESETS,
+    aiEnabled: Boolean(env.AI),
   };
   return full ? { ...base, updatedAt: cfg.updatedAt } : base;
 }
@@ -172,6 +177,8 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       devOtp: cfg.devOtp, mailConfigured: cfg.mailConfigured, mailSource: cfg.mailSource,
       mailFrom: cfg.mailFrom, adminPasswordSet: cfg.adminPasswordSet, r2Enabled: Boolean(env.IMAGES),
       requireBoundEmail: cfg.requireBoundEmail, aiEnabled: Boolean(env.AI),
+      aiModel: cfg.aiModel, aiAllowUserModel: cfg.aiAllowUserModel,
+      aiModels: AI_MODEL_PRESETS,
     } });
   }
 
@@ -294,7 +301,11 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       return json({ ok: true, config: configView(cfg, env, true), stats: await adminStats(env) });
     }
     if (p === "/api/admin/panel/config" && method === "POST") {
-      const next = await saveConfig(env, await readJson<ConfigPatch>(request));
+      const patch = await readJson<ConfigPatch>(request);
+      if (patch.aiModel && patch.aiModel !== "CLEAR" && !isValidAiModel(patch.aiModel)) {
+        return fail("AI 模型 ID 格式不正確：應為 @廠商/模型，例如 @cf/meta/llama-3.1-8b-instruct / Invalid model id", 400);
+      }
+      const next = await saveConfig(env, patch);
       return json({ ok: true, config: configView(next, env, true) });
     }
     if (p === "/api/admin/panel/test-mail" && method === "POST") {
@@ -306,6 +317,29 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       });
       return sent.ok ? json({ ok: true, status: sent.status, detail: "測試郵件已寄出 / Test mail sent" })
         : fail(`寄送失敗 ${sent.status}: ${sent.detail || "check token & from"}`, 502);
+    }
+    if (p === "/api/admin/panel/test-ai" && method === "POST") {
+      const body = await readJson<{ model?: string; prompt?: string }>(request);
+      const raw = String(body.model || "").trim();
+      const model = raw && raw !== "CLEAR" ? raw : cfg.aiModel;
+      if (!isValidAiModel(model)) return fail("AI 模型 ID 格式不正確 / Invalid model id", 400);
+      if (!env.AI) {
+        return fail("此 Cloudflare 帳號未開通 Workers AI；AI 助手會自動用本地回覆，模型設定仍會保存 / Workers AI not enabled on this account", 503);
+      }
+      try {
+        const out = await env.AI.run(model, {
+          messages: [
+            { role: "system", content: AI_SYSTEM("zh-HK") },
+            { role: "user", content: String(body.prompt || "用一句繁體中文同同學打招呼，20 字內。").slice(0, 300) },
+          ],
+          max_tokens: 80,
+        }) as { response?: string; text?: string } | null;
+        const reply = String(out?.response || out?.text || "").trim();
+        if (!reply) return fail("模型沒有回傳內容 / Model returned no text", 502);
+        return json({ ok: true, model, reply: reply.slice(0, 400) });
+      } catch (e) {
+        return fail(`模型呼叫失敗 / Model error: ${(e as Error).message || "not available on this account"}`, 502);
+      }
     }
     if (p === "/api/admin/panel/users") {
       const { results } = await env.DB.prepare(
@@ -478,10 +512,15 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 
   if (p === "/api/ai" && method === "POST") {
     const b = await readJson<{
-      prompt?: string; history?: { role: string; content: string }[]; lang?: string;
+      prompt?: string; history?: { role: string; content: string }[];
+      lang?: string; model?: string;
     }>(request);
     const prompt = String(b.prompt || "").trim().slice(0, 2000);
     if (!prompt) return fail("Empty prompt", 400);
+    // 管理员设的全局模型为默认；若允许，学生可在设置里为本机覆盖（仍须合法 ID）
+    const requested = String(b.model || "").trim();
+    const model = cfg.aiAllowUserModel && requested && isValidAiModel(requested)
+      ? requested : cfg.aiModel || DEFAULT_AI_MODEL;
     const rateKey = `RATE:AI:${me.id}`;
     const used = Number((await env.CACHE.get(rateKey)) || 0);
     if (used >= 12) return fail("AI 助手稍作休息 / AI is taking a short break", 429);
@@ -491,7 +530,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     const direct = /內容是\s*[:：]\s*(.+)/.exec(prompt) || /内容是\s*[:：]\s*(.+)/.exec(prompt);
     if (direct) {
       const reply = direct[1].trim().replace(/[？?。.!！\s]+$/g, "").trim();
-      return json({ ok: true, reply: reply || "聊天嗎", local: false, source: "direct" });
+      return json({ ok: true, reply: reply || "聊天嗎", local: false, source: "direct", model });
     }
     if (env.AI) {
       try {
@@ -500,7 +539,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
             .filter((m) => m && ["user", "assistant"].includes(m.role) && typeof m.content === "string")
             .map((m) => ({ role: m.role, content: String(m.content).slice(0, 600) }))
           : [];
-        const out = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+        const out = await env.AI.run(model, {
           messages: [
             { role: "system", content: AI_SYSTEM(b.lang) },
             ...history,
@@ -509,10 +548,12 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
           max_tokens: 160,
         }) as { response?: string; text?: string } | null;
         const reply = String(out?.response || out?.text || "").trim();
-        if (reply) return json({ ok: true, reply: reply.slice(0, 600), local: false, source: "workers-ai" });
+        if (reply) return json({ ok: true, reply: reply.slice(0, 600), local: false,
+          source: "workers-ai", model });
       } catch { /* 账户未开通 Workers AI 时静默降级 */ }
     }
-    return json({ ok: true, reply: aiFallback(prompt, b.lang), local: true, source: "local" });
+    return json({ ok: true, reply: aiFallback(prompt, b.lang), local: true,
+      source: "local", model });
   }
 
   /* ------------------------------ 会话 ------------------------------ */
@@ -699,7 +740,11 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       return json({ ok: true, config: configView(cfg, env, true), stats: await adminStats(env) });
     }
     if (p === "/api/admin/config" && method === "POST") {
-      const next = await saveConfig(env, await readJson<ConfigPatch>(request));
+      const patch = await readJson<ConfigPatch>(request);
+      if (patch.aiModel && patch.aiModel !== "CLEAR" && !isValidAiModel(patch.aiModel)) {
+        return fail("AI 模型 ID 格式不正確 / Invalid model id", 400);
+      }
+      const next = await saveConfig(env, patch);
       return json({ ok: true, config: configView(next, env, true) });
     }
   }
