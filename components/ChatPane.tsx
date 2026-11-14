@@ -6,6 +6,7 @@ import { useApp } from "@/lib/store";
 import { Avatar, IconButton, TypingDots, spring, softSpring } from "./ui";
 import MessageBubble from "./MessageBubble";
 import { Icon } from "./Icon";
+import { usePrefs, THREAD_ACCENTS, MUTE_FOREVER } from "@/lib/prefs";
 import Composer from "./Composer";
 import {
   threadTitle, threadOther, fmtDay, fmtLastSeen, dayKeyOf, cx,
@@ -15,6 +16,8 @@ export default function ChatPane() {
   const t = useApp((s) => s.t);
   const lang = useApp((s) => s.lang);
   const me = useApp((s) => s.me);
+  const isAdmin = useApp((s) => s.isAdmin);
+  const clock = usePrefs((s) => s.clock);
   const threads = useApp((s) => s.threads);
   const activeId = useApp((s) => s.activeId);
   const messages = useApp((s) => s.messages);
@@ -23,6 +26,7 @@ export default function ChatPane() {
   const [showJump, setShowJump] = useState(false);
   const [tick, setTick] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [noticeOpen, setNoticeOpen] = useState(true);
 
   const thread = threads.find((x) => x.id === activeId);
   const list = activeId ? (messages[activeId] || []) : [];
@@ -73,12 +77,17 @@ export default function ChatPane() {
   if (!thread || !activeId) return null;
 
   const other = threadOther(thread, me?.id || "");
-  const isOnline = thread.type === "direct" && other && Date.now() - (other.last_seen || 0) < 90_000;
+  const isOnline = thread.type === "direct" && other && other.show_online !== false
+    && Date.now() - (other.last_seen || 0) < 90_000;
+  const canPost = !thread.announcement_only || thread.created_by === me?.id || isAdmin;
+  const accentStyle = {
+    "--thread-accent": THREAD_ACCENTS[thread.accent || ""] || "transparent",
+  } as React.CSSProperties;
   const subtitle = typers.length
     ? `${typers[0][1].name} ${t("typing").replace("{name}", "").trim()}`
     : thread.type === "group" ? t("members", { n: thread.members.length })
     : isOnline ? t("online")
-    : fmtLastSeen(other?.last_seen || 0, lang, t("lastSeen"));
+    : fmtLastSeen(other?.last_seen || 0, lang, t("lastSeen"), clock);
 
   const flag = async (key: "pinned" | "muted" | "archived" | "starred") => {
     const patch = { [key]: !thread[key] } as Partial<
@@ -88,13 +97,22 @@ export default function ChatPane() {
     setMenuOpen(false);
   };
 
+  const toggleMute = () => {
+    const p = usePrefs.getState();
+    const on = !(thread.muted || p.isMuted(thread.id));
+    p.setMute(thread.id, on ? MUTE_FOREVER : 0);
+    useApp.getState().setFlags(thread.id, { muted: on });
+    setMenuOpen(false);
+  };
+
   return (
     <>
-      <header className="chat-head">
+      <header className="chat-head" style={accentStyle}>
         <IconButton className="mobile-back" onClick={() => useApp.setState({ activeId: null })}><Icon name="arrow-left" size={18} /></IconButton>
         <motion.div className="ch-avatar" whileHover={{ scale: 1.05 }}>
           <Avatar user={thread.type === "direct" ? other : undefined}
-            name={threadTitle(thread, me?.id || "")} id={thread.id} size={40} online={Boolean(isOnline)} />
+            name={threadTitle(thread, me?.id || "")} id={thread.id} size={40}
+            online={Boolean(isOnline)} avatarKey={thread.type === "group" ? thread.avatar_key : undefined} />
         </motion.div>
         <button className="ch-title" onClick={() => useApp.getState().setModal(
           thread.type === "group" ? "group-info" : "profile")}>
@@ -121,7 +139,7 @@ export default function ChatPane() {
             <motion.div className="head-menu" initial={{ opacity: 0, y: -8, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.96 }}>
               <button onClick={() => flag("pinned")}><Icon name="pin" size={15} /> {thread.pinned ? t("unpin") : t("pin")}</button>
-              <button onClick={() => flag("muted")}><Icon name="bell-off" size={15} /> {thread.muted ? t("unmute") : t("mute")}</button>
+              <button onClick={toggleMute}><Icon name="bell-off" size={15} /> {(thread.muted || usePrefs.getState().isMuted(thread.id)) ? t("unmute") : t("mute")}</button>
               <button onClick={() => flag("archived")}><Icon name="archive" size={15} /> {thread.archived ? t("unarchive") : t("archive")}</button>
               {thread.type === "group" && <button onClick={() => { setMenuOpen(false); useApp.getState().setModal("group-info"); }}><Icon name="info" size={15} /> {t("groupInfo")}</button>}
               {thread.type === "group" && !thread.is_default &&
@@ -130,6 +148,26 @@ export default function ChatPane() {
           )}
         </AnimatePresence>
       </header>
+
+      {thread.about && (
+        <motion.div className="notice-bar" style={accentStyle}
+          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+          <Icon name="mail" size={15} />
+          <button className="nb-text" onClick={() => setNoticeOpen((v) => !v)}>
+            <strong>{lang === "en" ? "Group notice" : "群公告"}</strong>
+            {noticeOpen && <span>{thread.about}</span>}
+          </button>
+          <span className="spacer" />
+          <IconButton onClick={() => setNoticeOpen((v) => !v)}>
+            <Icon name={noticeOpen ? "arrow-up" : "arrow-down"} size={14} />
+          </IconButton>
+        </motion.div>
+      )}
+
+      {!canPost && (
+        <div className="readonly-bar"><Icon name="lock" size={14} />
+          此群組僅限群主/管理員發言 / Only owner/admins can post</div>
+      )}
 
       <div className="wallpaper" aria-hidden="true" />
 
@@ -172,7 +210,7 @@ export default function ChatPane() {
         )}
       </AnimatePresence>
 
-      <Composer threadId={thread.id} />
+      <Composer threadId={thread.id} readOnly={!canPost} />
     </>
   );
 }

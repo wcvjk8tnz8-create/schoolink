@@ -342,7 +342,8 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       const flags = { pinned: body.pinned as boolean | undefined, muted: body.muted as boolean | undefined,
         archived: body.archived as boolean | undefined, starred: body.starred as boolean | undefined };
       if (Object.values(flags).some((v) => v !== undefined)) await setThreadFlags(env, me.id, threadId, flags);
-      if (["name", "about", "avatar_key"].some((k) => body[k] !== undefined)) {
+      if (["name", "about", "avatar_key", "accent", "announcement_only", "members_can_invite"]
+        .some((k) => body[k] !== undefined)) {
         const t = await env.DB.prepare("SELECT created_by, is_default FROM threads WHERE id=?")
           .bind(threadId).first<{ created_by: string; is_default: number }>();
         if (t?.created_by !== me.id && !isAdmin && !t?.is_default) return fail("Only group owner can edit", 403);
@@ -353,6 +354,12 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     }
 
     if (parts[3] === "members" && method === "POST") {
+      const meta = await env.DB.prepare(
+        "SELECT created_by, members_can_invite FROM threads WHERE id=?",
+      ).bind(threadId).first<{ created_by: string; members_can_invite: number }>();
+      if (meta && meta.members_can_invite === 0 && meta.created_by !== me.id && !isAdmin) {
+        return fail("只有群主/管理員可以邀請新成員 / Only owner/admins can add members", 403);
+      }
       const body = await readJson<{ memberIds?: string[] }>(request);
       await addGroupMembers(env, threadId, body.memberIds || []);
       const all = await memberIds(env, threadId);
@@ -365,7 +372,9 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     }
     if (parts[3] === "read" && method === "POST") {
       const at = await markRead(env, threadId, me.id);
-      await notify(env, ids, { type: "read", threadId, userId: me.id, at });
+      if (me.read_receipts !== false) {
+        await notify(env, ids, { type: "read", threadId, userId: me.id, at });
+      }
       return json({ ok: true, at });
     }
     if (parts[3] === "typing" && method === "POST") {
@@ -384,11 +393,19 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
         const messages = after
           ? await getMessagesAfter(env, threadId, after, me.id)
           : await getMessages(env, threadId, me.id, before, limit);
-        const reads = await env.DB.prepare("SELECT user_id, last_read_at FROM thread_members WHERE thread_id=?")
-          .bind(threadId).all<{ user_id: string; last_read_at: number }>();
+        const reads = await env.DB.prepare(
+          "SELECT tm.user_id, tm.last_read_at FROM thread_members tm " +
+          "JOIN users u ON u.id = tm.user_id WHERE tm.thread_id=? AND COALESCE(u.read_receipts,1)=1",
+        ).bind(threadId).all<{ user_id: string; last_read_at: number }>();
         return json({ ok: true, messages, reads: reads.results });
       }
       if (method === "POST") {
+        const meta = await env.DB.prepare(
+          "SELECT created_by, announcement_only FROM threads WHERE id=?",
+        ).bind(threadId).first<{ created_by: string; announcement_only: number }>();
+        if (meta?.announcement_only === 1 && meta.created_by !== me.id && !isAdmin) {
+          return fail("此群組僅限群主/管理員發言 / Only owner/admins can post here", 403);
+        }
         const body = await readJson<Record<string, unknown>>(request);
         let msg;
         try {

@@ -12,6 +12,8 @@ export interface User {
   banned: boolean;
   created_at: number;
   last_seen: number;
+  show_online: boolean;
+  read_receipts: boolean;
 }
 
 export interface Thread {
@@ -35,6 +37,9 @@ export interface Thread {
   archived: number;
   starred: number;
   last_read_at: number;
+  accent: string | null;
+  announcement_only: number;
+  members_can_invite: number;
   members: User[];
   online: boolean;
 }

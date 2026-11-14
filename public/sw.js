@@ -58,10 +58,17 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const threadId = event.notification.data && event.notification.data.threadId;
+  const target = threadId ? "/?thread=" + encodeURIComponent(threadId) : "/";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const c of list) if ("focus" in c) return c.focus();
-      if (self.clients.openWindow) return self.clients.openWindow("/");
+      for (const c of list) {
+        if ("focus" in c) {
+          if (threadId && "navigate" in c) c.navigate(target).catch(() => {});
+          return c.focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
     }),
   );
 });

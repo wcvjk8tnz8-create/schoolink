@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { Avatar, spring, softSpring } from "./ui";
 import { REACTION_KEYS, faceKeyOf } from "@/lib/faces";
+import { usePrefs } from "@/lib/prefs";
 import { FaceIcon, Icon } from "./Icon";
 import {
   fmtTime, fmtSize, fmtDuration, linkify, mediaUrl, cx,
@@ -79,6 +80,7 @@ export default function MessageBubble({ m, thread, index }: {
   const lang = useApp((s) => s.lang);
   const t = useApp((s) => s.t);
   const cfg = useApp((s) => s.config);
+  const clock = usePrefs((s) => s.clock);
   const [menu, setMenu] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const mine = m.sender_id === me?.id;
@@ -167,7 +169,7 @@ export default function MessageBubble({ m, thread, index }: {
 
           <div className="msg-foot">
             {m.edited_at && <span className="edited">{t("edited")}</span>}
-            <span>{fmtTime(m.created_at, lang)}</span>
+            <span>{fmtTime(m.created_at, lang, clock)}</span>
             <Ticks m={m} thread={thread} />
             {m.starred && <span className="star-mark"><Icon name="star-filled" size={12} /></span>}
             {m.failed && <span className="failed-mark">!</span>}

@@ -80,6 +80,7 @@ const zhCN: Dict = {
   reconnecting: "正在重新连接…", installTitle: "安装 Schoolink", installDesc: "装到桌面，像 App 一样使用",
   install: "安装", later: "以后再说", copyOk: "已复制", emoji: "表情",
   close: "关闭", confirm: "确定", ok: "好",
+  quickPhrases: "快捷短语", readonly: "仅群主/管理员可发言", readonlyPh: "此群组为公告频道",
 };
 
 const zhHK: Dict = {
@@ -150,6 +151,7 @@ const zhHK: Dict = {
   reconnecting: "正在重新連接…", installTitle: "安裝 Schoolink", installDesc: "裝到桌面，像 App 一樣使用",
   install: "安裝", later: "以後再說", copyOk: "已複製", emoji: "表情",
   close: "關閉", confirm: "確定", ok: "好",
+  quickPhrases: "快捷短語", readonly: "僅群主/管理員可發言", readonlyPh: "此群組為公告頻道",
 };
 
 const en: Dict = {
@@ -220,6 +222,7 @@ const en: Dict = {
   reconnecting: "Reconnecting…", installTitle: "Install Schoolink", installDesc: "Add to your home screen and use it like an app",
   install: "Install", later: "Later", copyOk: "Copied", emoji: "Emoji",
   close: "Close", confirm: "Confirm", ok: "OK",
+  quickPhrases: "Quick phrases", readonly: "Only owner/admins can post", readonlyPh: "This group is announcement-only",
 };
 
 export const I18N: Record<Lang, Dict> = { "zh-CN": zhCN, "zh-HK": zhHK, en };

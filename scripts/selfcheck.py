@@ -63,6 +63,8 @@ REQUIRED = [
     "app/layout.tsx", "app/page.tsx", "app/globals.css",
     "lib/i18n.ts", "lib/store.ts", "lib/api.ts", "lib/types.ts", "lib/utils.ts",
     "worker/index.ts", "worker/store.ts", "worker/auth.ts", "worker/kv.ts", "worker/migrate.ts",
+    "lib/prefs.ts", "lib/m4a.ts", "lib/faces.ts",
+    "components/AvatarPicker.tsx", "components/Customize.tsx",
     "worker/chat-room.ts", "worker/env.d.ts", "worker/util.ts", "worker/tsconfig.json",
     "public/manifest.webmanifest", "public/sw.js", "public/offline.html",
     "public/logo.svg", "public/favicon.svg",
@@ -194,8 +196,8 @@ sql = text("schema.sql")
 creates = re.findall(r"CREATE\s+(TABLE|INDEX)\s+(?!IF\s+NOT\s+EXISTS)", sql, re.I)
 ok("所有 CREATE 均带 IF NOT EXISTS", not creates, str(len(creates)))
 mig = text("worker/migrate.ts")
-ok("v1 到 v2 在线迁移已接入 /api/*", "ensureSchema" in mig and "ensureSchema(env)" in worker_src
-   and 'kvPut(env.CACHE, "SCHEMA:v2"' in mig)
+ok("在线表结构迁移已接入 /api/*", "ensureSchema" in mig and "ensureSchema(env)" in worker_src
+   and 'kvPut(env.CACHE, "SCHEMA:v3"' in mig)
 v2_extra = ["about", "banned", "last_seen", "last_message_at", "pinned", "muted",
             "archived", "starred", "media_key", "media_size", "reply_to",
             "forwarded_from", "edited_at", "deleted_at"]
@@ -321,6 +323,58 @@ ok("M4A 不引入新依赖（零 WASM）", "node_modules/mp4-muxer" not in lock_
    and not any("ffmpeg" in k for k in lock_pkgs))
 ok("README 说明 M4A 平台差异", "語音：统一 M4A" in text("README.md")
    or "语音：统一 M4A" in text("README.md"))
+
+
+# ── 14. 自定义功能：头像 / 群组 / 外观 / 效率 ───────────────────────
+picker = text("components/AvatarPicker.tsx")
+custom = text("components/Customize.tsx")
+prefs_mod = text("lib/prefs.ts")
+app_comp = text("components/App.tsx")
+css_all = text("app/globals.css")
+schema_d1 = text("schema.sql")
+migrate_d1 = text("worker/migrate.ts")
+worker_store_src = text("worker/store.ts")
+front_store = text("lib/store.ts")
+
+ok("头像支持三种来源", all(x in picker for x in ["preset:", "tint:", "isPreset", "parseAvatar"])
+   and "AvatarVisual" in picker and "AvatarPicker" in picker)
+ok("群组头像可修改（前端）", "AvatarPicker" in custom and "avatar_key: avatar" in custom
+   and "avatarKey={thread.type === \"group\" ? thread.avatar_key : undefined}" in text("components/ChatPane.tsx"))
+ok("群组头像写入 D1", "avatar_key=?" in worker_store_src
+   and '"avatar_key"' in text("worker/index.ts"))
+ok("个人头像写入 D1", "avatar_key=?" in worker_store_src)
+ok("无 R2 也能自定义头像", "cfg.r2Enabled ?" in picker and "preset:" in picker)
+
+new_cols = ["show_online", "read_receipts", "accent", "announcement_only", "members_can_invite"]
+ok("新字段在新库 schema 中", all(c in schema_d1 for c in new_cols),
+   str([c for c in new_cols if c not in schema_d1]))
+ok("新字段在线上库自动补齐", all(c in migrate_d1 for c in new_cols),
+   str([c for c in new_cols if c not in migrate_d1]))
+ok("迁移标记升级到 v3", '"SCHEMA:v3"' in migrate_d1 and '"SCHEMA:v2"' not in migrate_d1)
+
+wi = text("worker/index.ts")
+ok("公告频道服务端拦截发言", "announcement_only === 1" in wi and "Only owner/admins can post" in wi)
+ok("邀请权限服务端拦截", "members_can_invite === 0" in wi and "Only owner/admins can add members" in wi)
+ok("已读回执服务端双向过滤", "COALESCE(u.read_receipts,1)=1" in wi
+   and "me.read_receipts !== false" in wi)
+ok("公告频道前端只读", "readOnly={!canPost}" in text("components/ChatPane.tsx")
+   and "readOnly" in text("components/Composer.tsx"))
+ok("群公告置顶条", "notice-bar" in text("components/ChatPane.tsx") and ".notice-bar" in css_all)
+
+ok("自定义中心四大类", all(x in custom for x in ["ProfileCustomize", "GroupCustomize", "AppearancePrefs", "ToolsPrefs"]))
+ok("外观自定义项齐全", all(x in prefs_mod for x in ["ACCENTS", "WALLPAPERS", "FONTS", "quickPhrases", "compact", "animations", "clock", "sendWithEnter", "notifications", "muteUntil"]))
+ok("偏好即时应用到 DOM", "applyPrefs" in app_comp and "usePrefs.subscribe" in app_comp
+   and "MotionConfig" in app_comp)
+ok("强调色/壁纸/字号 CSS 已定义", all(x in css_all for x in
+   ['[data-accent="rose"]', '[data-wallpaper="grid"]', '[data-font="large"]', ".no-motion"]))
+ok("桌面通知闭环", "desktopNotify" in front_store and "data: { threadId }" in front_store
+   and "notification.data" in text("public/sw.js") and 'get("thread")' in app_comp)
+ok("快捷短语已接入输入框", "quickPhrases" in text("components/Composer.tsx")
+   and "phrase-menu" in css_all)
+ok("12/24 小时制生效", 'hour12: clock === "12h"' in text("lib/utils.ts")
+   and "usePrefs((s) => s.clock)" in text("components/MessageBubble.tsx"))
+ok("新增三语字典键", all(k in text("lib/i18n.ts") for k in ["quickPhrases", "readonly", "readonlyPh"]))
+ok("自定义功能写进 README", "自定义中心" in text("README.md") or "Customize" in text("README.md"))
 
 # ── 汇总 ───────────────────────────────────────────────────────────
 print(" Schoolink self-check\n")

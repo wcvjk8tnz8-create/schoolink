@@ -7,6 +7,7 @@ import type {
   Lang, Theme, User, Thread, Message, Config, Stats, WsEvent, Modal, Toast, Filter,
 } from "./types";
 import { mediaUrl } from "./utils";
+import { usePrefs } from "./prefs";
 
 type View = "loading" | "login" | "chat" | "admin-login" | "admin";
 type Conn = "connecting" | "online" | "offline" | "reconnecting";
@@ -100,11 +101,17 @@ interface State {
   createChat: () => Promise<string | null>;
   addMembers: (ids: string[]) => Promise<void>;
   leave: () => Promise<void>;
-  updateGroup: (p: { name?: string; about?: string }) => Promise<void>;
+  updateGroup: (p: {
+    name?: string; about?: string; avatar_key?: string | null; accent?: string | null;
+    announcement_only?: boolean; members_can_invite?: boolean;
+  }) => Promise<void>;
   runSearch: (q: string, thread?: string) => Promise<void>;
   loadStarred: () => Promise<void>;
   upload: (file: File) => Promise<{ key: string; url: string; name: string; size: number; mime: string }>;
-  updateProfile: (p: { display_name?: string; about?: string; avatar_key?: string | null }) => Promise<void>;
+  updateProfile: (p: {
+    display_name?: string; about?: string; avatar_key?: string | null;
+    show_online?: boolean; read_receipts?: boolean;
+  }) => Promise<void>;
   doInstall: () => Promise<void>;
   dismissInstall: () => void;
   connect: () => void;
@@ -579,7 +586,9 @@ export const useApp = create<State>((set, get) => ({
     try {
       await post(`/api/threads/${tid}/read`);
       set({ threads: get().threads.map((t) => t.id === tid ? { ...t, unread: 0 } : t) });
-      badge(get().threads.reduce((n, t) => n + (t.muted ? 0 : t.unread), 0));
+      badge(get().threads.reduce((n, t) =>
+        n + ((t.muted || usePrefs.getState().isMuted(t.id)) ? 0 : t.unread), 0));
+      if (!mine) desktopNotify(m, threadId, get());
     } catch { /* noop */ }
   },
   setFlags: async (id, p) => {
@@ -699,4 +708,30 @@ function handleEvent(
       get().refreshThreads();
       break;
   }
+}
+
+/** 页面在后台时，用 Service Worker 发一条系统通知；静音会话与关闭通知时不发 */
+function desktopNotify(m: Message, threadId: string, state: State): void {
+  const p = usePrefs.getState();
+  if (!p.notifications || p.isMuted(threadId)) return;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  if (typeof document === "undefined" || !document.hidden) return;
+  const thread = state.threads.find((x) => x.id === threadId);
+  const sender = thread?.members.find((x) => x.id === m.sender_id);
+  const title = thread?.type === "group"
+    ? (thread.name || "Schoolink") : (sender?.display_name || "Schoolink");
+  const body = (m.kind === "text" ? m.body : `[${m.kind}]`).slice(0, 160);
+  const opts = { body, icon: "/icons/icon-192.png", badge: "/icons/icon-192.png",
+    tag: `schoolink-${threadId}`, data: { threadId } };
+  try {
+    const sw = typeof navigator !== "undefined" ? navigator.serviceWorker : undefined;
+    if (sw) {
+      sw.getRegistration().then((reg) => {
+        if (reg) reg.showNotification(title, opts as unknown as NotificationOptions);
+        else new Notification(title, opts as NotificationOptions);
+      }).catch(() => { /* noop */ });
+    } else {
+      new Notification(title, opts as NotificationOptions);
+    }
+  } catch { /* 权限被撤销等情况直接忽略，不影响收消息 */ }
 }

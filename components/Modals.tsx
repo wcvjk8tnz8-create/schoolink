@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "@/lib/store";
 import { Avatar, IconButton, Segmented, spring, softSpring } from "./ui";
 import { Icon } from "./Icon";
+import Customize, { ProfileCustomize, GroupCustomize } from "./Customize";
+import { usePrefs } from "@/lib/prefs";
 import { LANGS, LANG_LABEL } from "@/lib/i18n";
 import { threadTitle, fmtTime, cx } from "@/lib/utils";
 import type { Message, Theme } from "@/lib/types";
@@ -92,85 +94,18 @@ function NewChat() {
 
 function Profile() {
   const t = useApp((s) => s.t);
-  const me = useApp((s) => s.me);
-  const [name, setName] = useState(me?.display_name || "");
-  const [about, setAbout] = useState(me?.about || "");
-  const [busy, setBusy] = useState(false);
-  const save = async () => {
-    setBusy(true);
-    try { await useApp.getState().updateProfile({ display_name: name, about }); }
-    catch (e) { useApp.getState().toastMsg((e as Error).message, "err"); }
-    finally { setBusy(false); }
-  };
-  return (
-    <Shell title={t("profileTitle")}>
-      <div className="profile-head"><Avatar user={me} size={84} online />
-        <div><strong>{me?.display_name}</strong><small>{me?.email}</small></div></div>
-      <div className="field"><label>{t("displayName")}</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} /></div>
-      <div className="field"><label>{t("about")}</label>
-        <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder={t("aboutPh")} /></div>
-      <div className="modal-foot"><button className="btn primary" onClick={save} disabled={busy}>{t("save")}</button></div>
-    </Shell>
-  );
+  return <Shell title={t("profileTitle")} wide><ProfileCustomize /></Shell>;
 }
 
 function Settings() {
-  const t = useApp((s) => s.t);
-  const lang = useApp((s) => s.lang);
-  const theme = useApp((s) => s.theme);
-  const me = useApp((s) => s.me);
-  return (
-    <Shell title={t("settingsTitle")}>
-      <div className="set-block"><h3>{t("theme")}</h3>
-        <Segmented value={theme} onChange={(v) => useApp.getState().setTheme(v as Theme)}
-          options={[{ key: "dark", label: t("themeDark"), icon: "moon" },
-            { key: "light", label: t("themeLight"), icon: "sun" },
-            { key: "system", label: t("themeSystem"), icon: "system" }] as const} /></div>
-      <div className="set-block"><h3>{t("language")}</h3>
-        <Segmented value={lang} onChange={(v) => useApp.getState().setLang(v)}
-          options={LANGS.map((l) => ({ key: l, label: LANG_LABEL[l] }))} /></div>
-      <div className="set-block"><h3>{t("account")}</h3>
-        <div className="set-row"><Avatar user={me} size={38} />
-          <div><strong>{me?.display_name}</strong><small>{me?.email}</small></div></div>
-        <button className="btn danger full" onClick={() => useApp.getState().logout()}><Icon name="logout" size={14} /> {t("logout")}</button>
-      </div>
-      <div className="set-block"><h3>PWA</h3>
-        <p className="muted-line">{t("installDesc")}</p>
-        <button className="btn full" onClick={() => useApp.getState().doInstall()}>{t("install")}</button></div>
-    </Shell>
-  );
+  return <Customize />;
 }
 
 function GroupInfo() {
   const t = useApp((s) => s.t);
   const thread = useApp((s) => s.threads.find((x) => x.id === s.activeId));
-  const [name, setName] = useState(thread?.name || "");
-  const [about, setAbout] = useState(thread?.about || "");
   if (!thread) return null;
-  return (
-    <Shell title={t("groupInfo")}>
-      <div className="profile-head"><Avatar name={thread.name || "G"} id={thread.id} size={76} />
-        <div><strong>{threadTitle(thread, useApp.getState().me?.id || "")}</strong>
-          <small>{t("members", { n: thread.members.length })}</small></div></div>
-      <div className="field"><label>{t("groupName")}</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} /></div>
-      <div className="field"><label>{t("groupDesc")}</label>
-        <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder={t("groupDescPh")} /></div>
-      <button className="btn full" onClick={() => useApp.getState().updateGroup({ name, about })}>{t("save")}</button>
-      <h3 className="sub-head">{t("addMember")}</h3>
-      <div className="member-list">
-        {thread.members.map((m) => (
-          <motion.div key={m.id} className="member-row" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}>
-            <Avatar user={m} size={32} /><div><strong>{m.display_name}</strong><small>{m.student_id}</small></div>
-          </motion.div>
-        ))}
-      </div>
-      <button className="btn full" onClick={() => useApp.getState().setModal("members")}><Icon name="plus" size={14} /> {t("addMember")}</button>
-      {!thread.is_default &&
-        <button className="btn danger full" onClick={() => useApp.getState().leave()}><Icon name="logout" size={14} /> {t("leave")}</button>}
-    </Shell>
-  );
+  return <Shell title={t("groupInfo")} wide><GroupCustomize thread={thread} /></Shell>;
 }
 
 function AddMembers() {
@@ -202,6 +137,7 @@ function AddMembers() {
 
 function MessageCard({ m, onClick }: { m: Message; onClick?: () => void }) {
   const lang = useApp((s) => s.lang);
+  const clock = usePrefs((s) => s.clock);
   const t = useApp((s) => s.t);
   const thread = useApp((s) => s.threads.find((x) => x.id === m.thread_id));
   const sender = thread?.members.find((x) => x.id === m.sender_id);
@@ -210,7 +146,7 @@ function MessageCard({ m, onClick }: { m: Message; onClick?: () => void }) {
       animate={{ opacity: 1, y: 0 }} transition={softSpring}>
       <Avatar user={sender} name={sender?.display_name} size={34} />
       <div><div className="mc-top"><strong>{thread ? threadTitle(thread, useApp.getState().me?.id || "") : m.thread_id}</strong>
-        <small>{fmtTime(m.created_at, lang)}</small></div>
+        <small>{fmtTime(m.created_at, lang, clock)}</small></div>
         <span>{m.deleted_at ? t("deleted") : m.kind === "text" ? m.body : `[${m.kind}]`}</span></div>
     </motion.button>
   );

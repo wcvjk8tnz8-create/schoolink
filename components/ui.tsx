@@ -5,18 +5,21 @@ import { useApp } from "@/lib/store";
 import { avatarStyle, initials, cx, mediaUrl } from "@/lib/utils";
 import { LogoMark } from "./Logo";
 import { Icon } from "./Icon";
+import { AvatarVisual } from "./AvatarPicker";
 import type { User } from "@/lib/types";
 
 export const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
 export const softSpring = { type: "spring" as const, stiffness: 180, damping: 22 };
 
-export function Avatar({ user, name, id, size = 40, online = false, className = "" }: {
-  user?: User | null; name?: string; id?: string; size?: number; online?: boolean; className?: string;
+export function Avatar({ user, name, id, size = 40, online = false, className = "", avatarKey }: {
+  user?: User | null; name?: string; id?: string; size?: number; online?: boolean;
+  className?: string; avatarKey?: string | null;
 }) {
   const cfg = useApp((s) => s.config);
   const label = user?.display_name || name || "?";
   const seed = user?.id || id || label;
-  const src = user?.avatar_key ? mediaUrl(user.avatar_key, cfg.r2PublicBaseUrl) : "";
+  // 群组头像 / 个人新头像都走同一套 value：preset: / tint: / R2 key / null
+  const value = avatarKey !== undefined ? avatarKey : (user?.avatar_key || null);
   return (
     <motion.span
       className={cx("avatar", className)}
@@ -25,7 +28,7 @@ export function Avatar({ user, name, id, size = 40, online = false, className = 
       transition={spring}
       aria-label={label}
     >
-      {src ? <img src={src} alt={label} /> : initials(label)}
+      <AvatarVisual value={value} label={label} seed={seed} size={size} base={cfg.r2PublicBaseUrl} />
       {online && <i className="avatar-online" />}
     </motion.span>
   );

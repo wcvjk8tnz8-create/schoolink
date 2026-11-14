@@ -26,9 +26,10 @@ export function avatarStyle(seed: string) {
   } as CSSProperties;
 }
 
-export function fmtTime(ts: number, lang: Lang): string {
+export type ClockFmt = "24h" | "12h";
+export function fmtTime(ts: number, lang: Lang, clock: ClockFmt = "24h"): string {
   return new Date(ts).toLocaleTimeString(lang === "en" ? "en-GB" : "zh-HK", {
-    hour: "2-digit", minute: "2-digit", hour12: false,
+    hour: "2-digit", minute: "2-digit", hour12: clock === "12h",
   });
 }
 
@@ -71,11 +72,11 @@ export function fmtDuration(sec: number | null): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function fmtLastSeen(ts: number, lang: Lang, label: string): string {
+export function fmtLastSeen(ts: number, lang: Lang, label: string, clock: ClockFmt = "24h"): string {
   if (!ts) return "";
   const diff = Date.now() - ts;
   if (diff < 90_000) return lang === "en" ? "online" : "在線";
-  return label.replace("{time}", fmtTime(ts, lang));
+  return label.replace("{time}", fmtTime(ts, lang, clock));
 }
 
 export function threadTitle(t: Thread, meId: string): string {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
+import { usePrefs, applyPrefs } from "@/lib/prefs";
 import { useApp } from "@/lib/store";
 import { Clover } from "./Logo";
 import { Toast, InstallBanner, Spinner } from "./ui";
@@ -12,10 +13,23 @@ import Chat from "./Chat";
 export default function App() {
   const view = useApp((s) => s.view);
   const lang = useApp((s) => s.lang);
+  const animations = usePrefs((s) => s.animations);
 
   useEffect(() => {
     useApp.getState().init();
+    applyPrefs(usePrefs.getState());
+    return usePrefs.subscribe(applyPrefs);
   }, []);
+
+  // 点击桌面通知后打开对应会话
+  useEffect(() => {
+    if (view !== "chat") return;
+    const q = new URLSearchParams(window.location.search).get("thread");
+    if (q) {
+      useApp.getState().openThread(q);
+      window.history.replaceState({}, "", "/");
+    }
+  }, [view]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -39,6 +53,7 @@ export default function App() {
   }, [lang]);
 
   return (
+    <MotionConfig reducedMotion={animations ? "user" : "always"}>
     <div className="app-root">
       <AnimatePresence mode="wait">
         {view === "loading" && (
@@ -77,5 +92,6 @@ export default function App() {
       <Toast />
       <InstallBanner />
     </div>
+    </MotionConfig>
   );
 }

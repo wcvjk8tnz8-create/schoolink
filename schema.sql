@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
   role         TEXT NOT NULL DEFAULT 'user',
   banned       INTEGER NOT NULL DEFAULT 0,
   created_at   INTEGER NOT NULL,
-  last_seen    INTEGER NOT NULL DEFAULT 0
+  last_seen    INTEGER NOT NULL DEFAULT 0,
+  show_online  INTEGER NOT NULL DEFAULT 1,
+  read_receipts INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
@@ -25,7 +27,10 @@ CREATE TABLE IF NOT EXISTS threads (
   created_by      TEXT NOT NULL,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
-  last_message_at INTEGER NOT NULL DEFAULT 0
+  last_message_at INTEGER NOT NULL DEFAULT 0,
+  accent           TEXT,
+  announcement_only  INTEGER NOT NULL DEFAULT 0,
+  members_can_invite INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);
 

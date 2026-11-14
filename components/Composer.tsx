@@ -8,15 +8,22 @@ import { cx } from "@/lib/utils";
 import { FACE_KEYS } from "@/lib/faces";
 import { FaceIcon, Icon } from "./Icon";
 import { toM4a, pickRecorderMime } from "@/lib/m4a";
+import { usePrefs } from "@/lib/prefs";
 
-export default function Composer({ threadId }: { threadId: string }) {
+export default function Composer({ threadId, readOnly = false }: {
+  threadId: string; readOnly?: boolean;
+}) {
   const t = useApp((s) => s.t);
+  const lang = useApp((s) => s.lang);
+  const sendWithEnter = usePrefs((s) => s.sendWithEnter);
+  const quickPhrases = usePrefs((s) => s.quickPhrases);
   const me = useApp((s) => s.me);
   const threads = useApp((s) => s.threads);
   const draft = useApp((s) => s.drafts[threadId] || "");
   const replyTo = useApp((s) => s.replyTo);
   const r2Enabled = useApp((s) => s.config.r2Enabled);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [phraseOpen, setPhraseOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -39,7 +46,14 @@ export default function Composer({ threadId }: { threadId: string }) {
     setMention(m ? m[1].toLowerCase() : null);
   }, [draft]);
 
+  const pickPhrase = (s: string): string => {
+    const parts = s.split(" / ");
+    if (parts.length < 3) return s;
+    return lang === "en" ? parts[2] : lang === "zh-HK" ? parts[1] : parts[0];
+  };
+
   const send = () => {
+    if (readOnly) return;
     const body = draft.trim();
     if (!body || busy) return;
     useApp.getState().setDraft("");
@@ -174,21 +188,44 @@ export default function Composer({ threadId }: { threadId: string }) {
         )}
       </AnimatePresence>
 
-      <div className={cx("composer", recording && "recording")}>
-        {r2Enabled && (
-          <IconButton title={t("attach")} onClick={() => { setAttachOpen((v) => !v); setEmojiOpen(false); }}>
+      <AnimatePresence>
+        {phraseOpen && !readOnly && (
+          <motion.div className="attach-menu phrase-menu" initial={{ opacity: 0, y: 12, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.94 }}
+            transition={softSpring}>
+            <div className="emoji-head">{t("quickPhrases") || "快捷短語 / Quick phrases"}
+              <IconButton onClick={() => setPhraseOpen(false)}><Icon name="close" size={15} /></IconButton></div>
+            {quickPhrases.map((s, i) => (
+              <button key={i} onClick={() => {
+                useApp.getState().setDraft(draft + (draft ? " " : "") + pickPhrase(s));
+                setPhraseOpen(false); taRef.current?.focus();
+              }}>{pickPhrase(s)}</button>
+            ))}
+            {!quickPhrases.length && <small>設定裡可新增 / Add more in Customize</small>}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className={cx("composer", recording && "recording", readOnly && "readonly")}>
+        {readOnly && <div className="composer-readonly"><Icon name="lock" size={14} /> {t("readonly") || "僅限群主/管理員發言"}</div>}
+        {!readOnly && r2Enabled && (
+          <IconButton title={t("attach")} onClick={() => { setAttachOpen((v) => !v); setEmojiOpen(false); setPhraseOpen(false); }}>
             <motion.span animate={{ rotate: attachOpen ? 45 : 0 }} transition={spring}><Icon name="plus" size={20} /></motion.span>
           </IconButton>
         )}
-        <IconButton title={t("emoji")} onClick={() => { setEmojiOpen((v) => !v); setAttachOpen(false); }}><Icon name="smile" size={20} /></IconButton>
+        {!readOnly && <IconButton title="快捷短語 / Quick phrases" onClick={() => { setPhraseOpen((v) => !v); setEmojiOpen(false); setAttachOpen(false); }}>
+          <Icon name="bolt" size={19} /></IconButton>}
+        {!readOnly && <IconButton title={t("emoji")} onClick={() => { setEmojiOpen((v) => !v); setAttachOpen(false); setPhraseOpen(false); }}><Icon name="smile" size={20} /></IconButton>}
         <textarea ref={taRef} value={draft} rows={1}
           onChange={(e) => useApp.getState().setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            const withCtrl = e.ctrlKey || e.metaKey;
+            if (sendWithEnter ? (!e.shiftKey && !withCtrl) : withCtrl) { e.preventDefault(); send(); }
           }}
-          placeholder={recording ? t("recording") : t("composerPh")}
-          disabled={recording} />
-        {recording ? (
+          placeholder={readOnly ? t("readonlyPh") || "此群組為公告頻道" : recording ? t("recording") : t("composerPh")}
+          disabled={recording || readOnly} />
+        {readOnly ? null : recording ? (
           <motion.button className="rec-btn" onClick={toggleRecord}
             animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 1.1, repeat: Infinity }}><Icon name="stop" size={18} /></motion.button>
         ) : (

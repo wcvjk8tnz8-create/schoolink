@@ -6,13 +6,14 @@ import { useApp } from "@/lib/store";
 import { Clover } from "./Logo";
 import { Avatar, IconButton, ListSkeleton, spring, softSpring } from "./ui";
 import { Icon } from "./Icon";
+import { usePrefs } from "@/lib/prefs";
 import { threadTitle, threadOther, preview, fmtTime, cx, dayKeyOf } from "@/lib/utils";
 import type { Thread, Filter } from "@/lib/types";
 
-function rowTime(ts: number | null, lang: string, today: string, yesterday: string): string {
+function rowTime(ts: number | null, lang: string, today: string, yesterday: string, clock: "24h" | "12h"): string {
   if (!ts) return "";
   const k = dayKeyOf(ts);
-  if (k === dayKeyOf(Date.now())) return fmtTime(ts, lang as "en");
+  if (k === dayKeyOf(Date.now())) return fmtTime(ts, lang as "en", clock);
   if (k === dayKeyOf(Date.now() - 86_400_000)) return yesterday;
   return new Date(ts).toLocaleDateString(lang === "en" ? "en-GB" : "zh-HK", { month: "numeric", day: "numeric" });
 }
@@ -22,6 +23,8 @@ function ThreadRow({ t, index }: { t: Thread; index: number }) {
   const lang = useApp((s) => s.lang);
   const activeId = useApp((s) => s.activeId);
   const tFn = useApp((s) => s.t);
+  const clock = usePrefs((s) => s.clock);
+  const localMute = usePrefs((s) => (s.muteUntil[t.id] || 0) > Date.now());
   const other = threadOther(t, me?.id || "");
   const name = threadTitle(t, me?.id || "");
   const isOnline = t.type === "direct" && Boolean(other && Date.now() - (other.last_seen || 0) < 90_000);
@@ -36,16 +39,16 @@ function ThreadRow({ t, index }: { t: Thread; index: number }) {
       whileHover={{ x: 3 }} whileTap={{ scale: 0.985 }}
     >
       <Avatar user={t.type === "direct" ? other : undefined} name={name} id={t.id}
-        size={46} online={isOnline} />
+        size={46} online={isOnline} avatarKey={t.type === "group" ? t.avatar_key : undefined} />
       <div className="tr-main">
         <div className="tr-top">
           <strong>{name}</strong>
-          <span className="tr-time">{rowTime(t.last_at, lang, tFn("today"), tFn("yesterday"))}</span>
+          <span className="tr-time">{rowTime(t.last_at, lang, tFn("today"), tFn("yesterday"), clock)}</span>
         </div>
         <div className="tr-bottom">
           <span className="tr-preview">{preview(t, tFn) || tFn("noMessages")}</span>
           {t.pinned ? <Icon name="pin" size={12} className="tr-flag" /> : null}
-          {t.muted ? <Icon name="bell-off" size={12} className="tr-flag" /> : null}
+          {(t.muted || localMute) ? <Icon name="bell-off" size={12} className="tr-flag" /> : null}
           {t.unread > 0 && (
             <motion.span key={t.unread} className="tr-unread"
               initial={{ scale: 0.4 }} animate={{ scale: 1 }} transition={spring}>

@@ -23,6 +23,7 @@ export interface UserRow {
   id: string; email: string; student_id: string; display_name: string;
   about: string; avatar_key: string | null; role: string; banned: number;
   created_at: number; last_seen: number;
+  show_online: number; read_receipts: number;
 }
 
 export interface MessageRow {
@@ -135,6 +136,7 @@ export const publicUser = (r: UserRow) => ({
   id: r.id, email: r.email, student_id: r.student_id, display_name: r.display_name,
   about: r.about || "", avatar_key: r.avatar_key || null, role: r.role || "user",
   banned: Boolean(r.banned), created_at: r.created_at, last_seen: r.last_seen || 0,
+  show_online: r.show_online !== 0, read_receipts: r.read_receipts !== 0,
 });
 
 export const getUserById = (env: Env, id: string) =>
@@ -174,7 +176,10 @@ export async function listUsers(env: Env, exceptId: string): Promise<UserRow[]> 
 }
 
 export async function updateProfile(
-  env: Env, userId: string, patch: { display_name?: string; about?: string; avatar_key?: string | null },
+  env: Env, userId: string, patch: {
+    display_name?: string; about?: string; avatar_key?: string | null;
+    show_online?: boolean; read_receipts?: boolean;
+  },
 ): Promise<UserRow | null> {
   const cur = await getUserById(env, userId);
   if (!cur) return null;
@@ -182,9 +187,13 @@ export async function updateProfile(
     ? String(patch.display_name).trim().slice(0, 40) || cur.display_name : cur.display_name;
   const about = patch.about !== undefined ? String(patch.about).trim().slice(0, 140) : cur.about;
   const avatar = patch.avatar_key !== undefined ? patch.avatar_key : cur.avatar_key;
-  await env.DB.prepare("UPDATE users SET display_name=?, about=?, avatar_key=? WHERE id=?")
-    .bind(name, about, avatar, userId).run();
-  return { ...cur, display_name: name, about, avatar_key: avatar };
+  const showOnline = patch.show_online !== undefined ? (patch.show_online ? 1 : 0) : (cur.show_online ?? 1);
+  const readReceipts = patch.read_receipts !== undefined ? (patch.read_receipts ? 1 : 0) : (cur.read_receipts ?? 1);
+  await env.DB.prepare(
+    "UPDATE users SET display_name=?, about=?, avatar_key=?, show_online=?, read_receipts=? WHERE id=?",
+  ).bind(name, about, avatar, showOnline, readReceipts, userId).run();
+  return { ...cur, display_name: name, about, avatar_key: avatar,
+    show_online: showOnline, read_receipts: readReceipts };
 }
 
 export async function setBanned(env: Env, userId: string, banned: boolean): Promise<void> {
@@ -244,6 +253,7 @@ export interface ThreadView {
   created_at: number; updated_at: number; last_message_at: number;
   last_body: string | null; last_kind: string | null; last_sender: string | null; last_at: number | null;
   unread: number; pinned: number; muted: number; archived: number; starred: number;
+  accent: string | null; announcement_only: number; members_can_invite: number;
   members: ReturnType<typeof publicUser>[];
   online: boolean; last_read_at: number;
 }
@@ -354,18 +364,30 @@ export async function createThread(
 }
 
 export async function updateThread(
-  env: Env, threadId: string, patch: { name?: string; about?: string; avatar_key?: string | null },
+  env: Env, threadId: string, patch: {
+    name?: string; about?: string; avatar_key?: string | null;
+    accent?: string | null; announcement_only?: boolean; members_can_invite?: boolean;
+  },
 ): Promise<void> {
   const cur = await env.DB.prepare("SELECT * FROM threads WHERE id=?").bind(threadId)
-    .first<{ name: string | null; about: string; avatar_key: string | null }>();
+    .first<{ name: string | null; about: string; avatar_key: string | null;
+      accent: string | null; announcement_only: number; members_can_invite: number }>();
   if (!cur) return;
-  await env.DB.prepare("UPDATE threads SET name=?, about=?, avatar_key=? WHERE id=?")
-    .bind(
-      patch.name !== undefined ? String(patch.name).trim().slice(0, 60) : cur.name,
-      patch.about !== undefined ? String(patch.about).trim().slice(0, 300) : cur.about,
-      patch.avatar_key !== undefined ? patch.avatar_key : cur.avatar_key,
-      threadId,
-    ).run();
+  const accent = patch.accent !== undefined
+    ? (["violet", "blue", "teal", "green", "amber", "rose"].includes(String(patch.accent))
+      ? String(patch.accent) : null) : (cur.accent ?? null);
+  const announcementOnly = patch.announcement_only !== undefined
+    ? (patch.announcement_only ? 1 : 0) : (cur.announcement_only ?? 0);
+  const membersCanInvite = patch.members_can_invite !== undefined
+    ? (patch.members_can_invite ? 1 : 0) : (cur.members_can_invite ?? 1);
+  await env.DB.prepare(
+    "UPDATE threads SET name=?, about=?, avatar_key=?, accent=?, announcement_only=?, members_can_invite=? WHERE id=?",
+  ).bind(
+    patch.name !== undefined ? String(patch.name).trim().slice(0, 60) : cur.name,
+    patch.about !== undefined ? String(patch.about).trim().slice(0, 300) : cur.about,
+    patch.avatar_key !== undefined ? patch.avatar_key : cur.avatar_key,
+    accent, announcementOnly, membersCanInvite, threadId,
+  ).run();
   const mems = await membersOfThread(env, threadId);
   await invalidateThreads(env, mems.map((m) => m.id));
 }

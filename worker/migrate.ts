@@ -18,13 +18,16 @@ const DDL: string[] = [
     id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, student_id TEXT NOT NULL,
     display_name TEXT NOT NULL, about TEXT NOT NULL DEFAULT '', avatar_key TEXT,
     role TEXT NOT NULL DEFAULT 'user', banned INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL DEFAULT 0)`,
+    created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL DEFAULT 0,
+    show_online INTEGER NOT NULL DEFAULT 1, read_receipts INTEGER NOT NULL DEFAULT 1)`,
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
   `CREATE TABLE IF NOT EXISTS threads (
     id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT, about TEXT NOT NULL DEFAULT '',
     avatar_key TEXT, direct_key TEXT UNIQUE, is_default INTEGER NOT NULL DEFAULT 0,
     created_by TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-    last_message_at INTEGER NOT NULL DEFAULT 0)`,
+    last_message_at INTEGER NOT NULL DEFAULT 0, accent TEXT,
+    announcement_only INTEGER NOT NULL DEFAULT 0,
+    members_can_invite INTEGER NOT NULL DEFAULT 1)`,
   `CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC)`,
   `CREATE TABLE IF NOT EXISTS thread_members (
     thread_id TEXT NOT NULL, user_id TEXT NOT NULL, joined_at INTEGER NOT NULL,
@@ -56,10 +59,15 @@ const NEW_COLUMNS: Record<string, string[]> = {
     "about TEXT NOT NULL DEFAULT ''",
     "banned INTEGER NOT NULL DEFAULT 0",
     "last_seen INTEGER NOT NULL DEFAULT 0",
+    "show_online INTEGER NOT NULL DEFAULT 1",
+    "read_receipts INTEGER NOT NULL DEFAULT 1",
   ],
   threads: [
     "about TEXT NOT NULL DEFAULT ''",
     "last_message_at INTEGER NOT NULL DEFAULT 0",
+    "accent TEXT",
+    "announcement_only INTEGER NOT NULL DEFAULT 0",
+    "members_can_invite INTEGER NOT NULL DEFAULT 1",
   ],
   thread_members: [
     "pinned INTEGER NOT NULL DEFAULT 0",
@@ -79,7 +87,7 @@ let ready = false;
 export async function ensureSchema(env: Env): Promise<void> {
   if (ready) return;
   try {
-    const marker = await env.CACHE.get("SCHEMA:v2");
+    const marker = await env.CACHE.get("SCHEMA:v3");
     if (marker) { ready = true; return; }
   } catch { /* KV 暂时不可用也继续，DDL 本身幂等 */ }
 
@@ -117,5 +125,5 @@ export async function ensureSchema(env: Env): Promise<void> {
   } catch { /* 无 image_key 列时跳过 */ }
 
   ready = true;
-  try { await kvPut(env.CACHE, "SCHEMA:v2", String(Date.now())); } catch { /* noop */ }
+  try { await kvPut(env.CACHE, "SCHEMA:v3", String(Date.now())); } catch { /* noop */ }
 }
