@@ -41,7 +41,7 @@ function AudioPlayer({ m, url }: { m: Message; url: string }) {
           />
         ))}
       </div>
-      <span className="audio-time">{fmtDuration(m.duration)}</span>
+      <span className="audio-time">{fmtDuration(m.duration)}{/\.m4a$/i.test(m.media_name || "") ? " · M4A" : ""}</span>
       <audio ref={ref} src={url} preload="metadata"
         onTimeUpdate={(e) => {
           const a = e.currentTarget;

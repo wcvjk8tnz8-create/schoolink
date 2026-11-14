@@ -28,8 +28,9 @@ export { RealtimeHub } from "./chat-room";
 const MIME_EXT: Record<string, string> = {
   "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
   "image/gif": "gif", "image/avif": "avif", "image/heic": "heic",
-  "audio/webm": "webm", "audio/mp4": "m4a", "audio/mpeg": "mp3",
-  "audio/ogg": "ogg", "audio/wav": "wav", "audio/x-m4a": "m4a",
+  "audio/webm": "webm", "audio/mp4": "m4a", "audio/m4a": "m4a",
+  "audio/aac": "m4a", "audio/x-m4a": "m4a", "audio/mpeg": "mp3",
+  "audio/ogg": "ogg", "audio/wav": "wav",
   "application/pdf": "pdf", "text/plain": "txt",
   "application/zip": "zip", "application/json": "json",
   "application/msword": "doc",
@@ -458,7 +459,10 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     const form = await request.formData();
     const file = form.get("file");
     if (!file || typeof file === "string") return fail("Missing file", 400);
-    const mime = file.type || "application/octet-stream";
+    // 浏览器可能给 audio/mp4;codecs=mp4a.40.2，去掉参数再查白名单；
+    // 但 R2 响应头保留完整 codecs，播放器才不会把 Opus-in-MP4 当成 AAC
+    const rawType = (file.type || "application/octet-stream").trim();
+    const mime = rawType.split(";")[0].trim().toLowerCase();
     const ext = MIME_EXT[mime];
     if (!ext) return fail("不支援的檔案類型 / Unsupported file type", 415);
     if (file.size > MAX_UPLOAD) return fail("檔案超過 20MB / File too large", 413);
@@ -466,7 +470,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     const stamp = new Date().toISOString().slice(0, 7).replace("-", "/");
     const key = `${category}/${stamp}/${uid()}.${ext}`;
     await env.IMAGES.put(key, await file.arrayBuffer(), {
-      httpMetadata: { contentType: mime, cacheControl: "public, max-age=31536000, immutable" },
+      httpMetadata: { contentType: rawType, cacheControl: "public, max-age=31536000, immutable" },
       customMetadata: { uploader: me.id, name: String(file.name || "file").slice(0, 120) },
     });
     return json({ ok: true, key, url: mediaUrl(key, cfg), name: file.name, size: file.size, mime });

@@ -98,7 +98,7 @@ https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%
 | SVG 贴纸表情回应（8 种，去重计数） |  星标消息 + 星标列表 |
 | 置顶 /  静音 /  归档 |  未读数 + PWA 桌面角标 |
 | 搜索消息（全局 / 当前会话，`⌘K`） |  图片灯箱、懒加载、下载 |
-| 语音录制（波形动画 + 时长） |  文件卡片、群公告、群名/头像 |
+| 语音录制统一输出 **M4A**（波形动画 + 时长） |  文件卡片、群公告、群名/头像 |
 | 加成员 / 退群 |  日期分隔、会话预览、草稿 |
 
 ### 加分的
@@ -125,6 +125,17 @@ Motion 14 驱动：splash 进度条、四叶草弹簧入场/浮动/眨眼、视�
 - 表情 / 回应是 `lib/faces.ts` 里的彩色 SVG 贴纸：消息文本存 `:smile:` 这类短代码，渲染时替换为 SVG；旧数据里的 emoji 字符会自动映射，不会显示成空白。
 - 验证码邮件标题也用内联 SVG 四叶草 + 文字，不含 emoji。
 - `scripts/selfcheck.py` 会在部署前扫描界面源码，出现任何 emoji 字符直接 fail。
+
+### 语音：统一 M4A
+
+`lib/m4a.ts` 用浏览器原生能力，**零第三方依赖、零 WASM、离线可用**：
+
+1. 录音时优先申请 `audio/mp4;codecs=mp4a.40.2`（Safari / iOS 直接出 AAC），其次 `audio/mp4`（Chrome / Edge / Android 出 MP4 容器），webm 只作最后兜底。直出 M4A 时**不做二次编码**，没有音质损失、不需要等待。
+2. 万一录到的是 webm/ogg，录完后会「解码成 PCM → 重新以 `audio/mp4` 编码」，仍然落盘为 `.m4a`；超过 30 秒的长语音跳过实时重录并明确提示。
+3. 文件名一律 `voice-<时间戳>.m4a`，R2 里放在 `audio/年/月/`；Worker 会把 `audio/mp4;codecs=...` 归一化后查 MIME 白名单，但**响应头保留完整 codecs**，避免播放器把 Opus-in-MP4 误判成 AAC。
+4. 气泡上直接标 `· M4A`，下载下来的也是 `.m4a`。
+
+> 平台差异说明：Safari / iOS 拿到的是标准 AAC-LC；Chrome 由于不开放 AAC 编码器，MP4 容器里装的是 Opus（Chrome / Edge / Android 原生可播）。要做到全平台 AAC 只能引入 ~64 MB 的 ffmpeg.wasm，对校园 PWA 不合理，故未采用。不支持 MP4 录制的浏览器会保留原格式并在界面上明确提示，不会假装是 m4a。
 
 ### 没加的，以及为什么
 

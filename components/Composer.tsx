@@ -7,6 +7,7 @@ import { IconButton, Spinner, spring, softSpring } from "./ui";
 import { cx } from "@/lib/utils";
 import { FACE_KEYS } from "@/lib/faces";
 import { FaceIcon, Icon } from "./Icon";
+import { toM4a, pickRecorderMime } from "@/lib/m4a";
 
 export default function Composer({ threadId }: { threadId: string }) {
   const t = useApp((s) => s.t);
@@ -74,13 +75,16 @@ export default function Composer({ threadId }: { threadId: string }) {
     if (recording) {
       const rec = recRef.current;
       if (rec) {
-        rec.recorder.onstop = () => {
-          const blob = new Blob(rec.chunks, { type: rec.recorder.mimeType || "audio/webm" });
-          const duration = Math.max(1, Math.round((Date.now() - rec.start) / 1000));
-          const ext = (rec.recorder.mimeType || "audio/webm").includes("mp4") ? "m4a" : "webm";
-          const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: rec.recorder.mimeType || "audio/webm" });
+        rec.recorder.onstop = async () => {
+          const elapsed = Math.max(1, Math.round((Date.now() - rec.start) / 1000));
+          const raw = new Blob(rec.chunks, { type: rec.recorder.mimeType || "audio/webm" });
           rec.stream.getTracks().forEach((tr) => tr.stop());
-          uploadAndSend(file, "audio", duration);
+          recRef.current = null;
+          // 统一成 M4A：直录 MP4 时零转码；拿到 webm 时解码后重新编码
+          const voice = await toM4a(raw, elapsed);
+          if (voice.notice) useApp.getState().toastMsg(voice.notice, "err");
+          const file = new File([voice.blob], `voice-${Date.now()}.${voice.ext}`, { type: voice.mime });
+          await uploadAndSend(file, "audio", voice.duration);
         };
         rec.recorder.stop();
       }
@@ -89,8 +93,7 @@ export default function Composer({ threadId }: { threadId: string }) {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+      const mime = pickRecorderMime();
       const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };

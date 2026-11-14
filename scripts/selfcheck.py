@@ -301,6 +301,27 @@ ok("前后端表情回应白名单一致",
 ok("CSS 已适配 SVG 图标", ".svg-icon" in text("app/globals.css") and ".inline-face" in text("app/globals.css"))
 ok("邮件模板不含 emoji", not emoji_re.search(text("worker/index.ts")))
 
+# ── 13. 语音统一 M4A ───────────────────────────────────────────────
+m4a = text("lib/m4a.ts")
+composer = text("components/Composer.tsx")
+worker_upload = text("worker/index.ts")
+bubble = text("components/MessageBubble.tsx")
+ok("M4A 编码模块存在", "export async function toM4a" in m4a and "export function pickRecorderMime" in m4a)
+ok("Composer 接入 M4A 转换", "toM4a(raw, elapsed)" in composer and "pickRecorderMime()" in composer)
+aac_i = m4a.find('"audio/mp4;codecs=mp4a.40.2"')
+mp4_i = m4a.find('  M4A_MIME,')
+ok("优先申请显式 AAC 编码", aac_i >= 0 and mp4_i > aac_i >= 0, f"aac@{aac_i} mp4@{mp4_i}")
+ok("录音不再硬编码 webm 优先", '"audio/webm") ? "audio/webm"' not in composer)
+ok("Worker 归一化带 codecs 的 MIME", 'split(";")[0]' in worker_upload and "rawType" in worker_upload)
+ok("R2 响应头保留完整 codecs", "contentType: rawType" in worker_upload)
+ok("audio/mp4 映射为 .m4a", '"audio/mp4": "m4a"' in worker_upload)
+ok("语音气泡标注 M4A", "M4A" in bubble and "\\.m4a$" in bubble)
+lock_pkgs = parsed.get("package-lock.json", {}).get("packages", {})
+ok("M4A 不引入新依赖（零 WASM）", "node_modules/mp4-muxer" not in lock_pkgs
+   and not any("ffmpeg" in k for k in lock_pkgs))
+ok("README 说明 M4A 平台差异", "語音：统一 M4A" in text("README.md")
+   or "语音：统一 M4A" in text("README.md"))
+
 # ── 汇总 ───────────────────────────────────────────────────────────
 print(" Schoolink self-check\n")
 for passed, name, detail in results:

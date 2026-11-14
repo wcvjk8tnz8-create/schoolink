@@ -27,5 +27,7 @@
     "typescript": "^5.9.3",
     "wrangler": "4.161.0"
   },
-  "engines": { "node": ">=22.12" }
+  "engines": {
+    "node": ">=22.12"
+  }
 }
