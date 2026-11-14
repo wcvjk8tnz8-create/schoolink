@@ -722,7 +722,7 @@ function desktopNotify(m: Message, threadId: string, state: State): void {
   const title = thread?.type === "group"
     ? (thread.name || "Schoolink") : (sender?.display_name || "Schoolink");
   const body = (m.kind === "text" ? m.body : `[${m.kind}]`).slice(0, 160);
-  const opts = { body, icon: "/icons/icon-192.png", badge: "/icons/icon-192.png",
+  const opts = { body, icon: "/icons/icon-192.png", badge: "/icons/icon-badge.png",
     tag: `schoolink-${threadId}`, data: { threadId } };
   try {
     const sw = typeof navigator !== "undefined" ? navigator.serviceWorker : undefined;

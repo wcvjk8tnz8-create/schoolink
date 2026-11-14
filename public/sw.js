@@ -1,6 +1,11 @@
 /* Schoolink Service Worker — 离线可开、静态资源缓存、API 永不缓存 */
-const CACHE = "schoolink-v2";
-const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/logo.svg", "/favicon.svg", "/offline.html"];
+const CACHE = "schoolink-v3";
+const SHELL = [
+  "/", "/index.html", "/manifest.webmanifest", "/offline.html",
+  "/logo.svg", "/favicon.svg",
+  "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable.png",
+  "/icons/apple-touch-icon.png", "/icons/icon-badge.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

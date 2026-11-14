@@ -128,6 +128,25 @@ Motion 14 驱动：splash 进度条、四叶草弹簧入场/浮动/眨眼、视�
 - 验证码邮件标题也用内联 SVG 四叶草 + 文字，不含 emoji。
 - `scripts/selfcheck.py` 会在部署前扫描界面源码，出现任何 emoji 字符直接 fail。
 
+### PWA 图标：和网页同一颗四叶草
+
+`public/icons/*` 全部由 **`public/logo.svg` 渲染**，不是另画一套：紫蓝渐变四叶草 + 白色 `>` 眨眼 + 上弯微笑嘴，深蓝紫品牌底，跟网页左上角、欢迎页、favicon 完全一致。
+
+| 文件 | 尺寸 | 用途 |
+|---|---|---|
+| `icon-192.png` / `icon-512.png` | 192 / 512 | manifest `any`，安装到主屏、桌面快捷方式 |
+| `icon-maskable.png` | 512 | `maskable`：四叶草缩到 62%，完整落在 80% 安全圆内，背景满 bleed 不留透明边 |
+| `apple-touch-icon.png` | 180 | iOS 主屏（不透明底，圆角交给系统） |
+| `icon-badge.png` | 96 | 桌面通知角标：白色剪影 + 笑脸镂空、透明底 |
+
+重新生成（改了 logo.svg 之后）：
+
+```bash
+npm run icons      # 需要本机 Chromium / Playwright，产物已提交，CI 不用跑
+```
+
+SW 缓存版本同步升到 `schoolink-v3`，安装过旧版的用户会拿到新外壳与新图标；离线外壳也会预缓存全部图标，断网打开仍是这颗四叶草。
+
 ### 自定义中心（点侧栏齿轮进入，四大类）
 
 **群组（存 D1，全群同步，只有群主/管理员可改）**

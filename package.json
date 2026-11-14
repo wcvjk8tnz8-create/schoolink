@@ -10,7 +10,8 @@
     "check": "python3 scripts/selfcheck.py",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p worker/tsconfig.json",
     "deploy": "npm run build && wrangler deploy",
-    "cf-typegen": "wrangler types --config wrangler.jsonc worker/env.d.ts"
+    "cf-typegen": "wrangler types --config wrangler.jsonc worker/env.d.ts",
+    "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
     "motion": "14.13.0",

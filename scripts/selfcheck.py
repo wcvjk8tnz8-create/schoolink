@@ -64,7 +64,7 @@ REQUIRED = [
     "lib/i18n.ts", "lib/store.ts", "lib/api.ts", "lib/types.ts", "lib/utils.ts",
     "worker/index.ts", "worker/store.ts", "worker/auth.ts", "worker/kv.ts", "worker/migrate.ts",
     "lib/prefs.ts", "lib/m4a.ts", "lib/faces.ts",
-    "components/AvatarPicker.tsx", "components/Customize.tsx",
+    "components/AvatarPicker.tsx", "components/Customize.tsx", "scripts/gen-icons.mjs",
     "worker/chat-room.ts", "worker/env.d.ts", "worker/util.ts", "worker/tsconfig.json",
     "public/manifest.webmanifest", "public/sw.js", "public/offline.html",
     "public/logo.svg", "public/favicon.svg",
@@ -375,6 +375,46 @@ ok("12/24 小时制生效", 'hour12: clock === "12h"' in text("lib/utils.ts")
    and "usePrefs((s) => s.clock)" in text("components/MessageBubble.tsx"))
 ok("新增三语字典键", all(k in text("lib/i18n.ts") for k in ["quickPhrases", "readonly", "readonlyPh"]))
 ok("自定义功能写进 README", "自定义中心" in text("README.md") or "Customize" in text("README.md"))
+
+
+# ── 15. PWA 图标与网页 logo 一致 ─────────────────────────────────
+import struct, zlib
+def png_info(rel):
+    raw = (ROOT / rel).read_bytes()
+    assert raw[:8] == b"\x89PNG\r\n\x1a\n", "not png"
+    w, h = struct.unpack(">II", raw[16:24])
+    return w, h, raw
+
+icon_sizes = {
+    "public/icons/icon-192.png": (192, 192),
+    "public/icons/icon-512.png": (512, 512),
+    "public/icons/icon-maskable.png": (512, 512),
+    "public/icons/apple-touch-icon.png": (180, 180),
+    "public/icons/icon-badge.png": (96, 96),
+}
+ok("PWA 图标尺寸全部正确", all(png_info(k)[:2] == v for k, v in icon_sizes.items()),
+   str({k: png_info(k)[:2] for k in icon_sizes}))
+gen = text("scripts/gen-icons.mjs")
+ok("图标由 logo.svg 渲染生成", 'readFileSync(path.join(root, "public", "logo.svg")' in gen
+   and "icon-maskable.png" in gen and "icon-badge.png" in gen)
+# 旧图标特征：粉色腮红。新图标绝不能出现
+ok("maskable 保留安全区（四叶草 ≤ 66%）", "inner: 0.62" in gen and "0.82" in gen)
+ok("badge 为白色镂空剪影", 'mask="url(#face)"' in gen and 'fill="#FFFFFF"' in gen)
+man = text("public/manifest.webmanifest")
+ok("manifest 引用全部图标", all(x in man for x in
+   ["icon-192.png", "icon-512.png", "icon-maskable.png", "apple-touch-icon.png"])
+   and '"purpose": "maskable"' in man)
+lay = text("app/layout.tsx")
+ok("HTML head 声明 PNG 图标", 'icons/icon-192.png' in lay and 'icons/icon-512.png' in lay
+   and 'apple-touch-icon.png' in lay)
+sw_src = text("public/sw.js")
+ok("离线外壳预缓存全部图标", all(x in sw_src for x in
+   ["icon-192.png", "icon-512.png", "icon-maskable.png", "apple-touch-icon.png", "icon-badge.png"])
+   and 'schoolink-v3' in sw_src)
+ok("通知 badge 指向剪影图标", 'badge: "/icons/icon-badge.png"' in text("lib/store.ts"))
+ok("favicon 与 logo 同一套图形", "M84 100 L110 126 L84 152" in text("public/favicon.svg")
+   and "M84 100 L110 126 L84 152" in text("public/logo.svg"))
+ok("README 说明 PWA 图标", "PWA 图标" in text("README.md") and "npm run icons" in text("README.md"))
 
 # ── 汇总 ───────────────────────────────────────────────────────────
 print(" Schoolink self-check\n")
