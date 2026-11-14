@@ -588,7 +588,6 @@ export const useApp = create<State>((set, get) => ({
       set({ threads: get().threads.map((t) => t.id === tid ? { ...t, unread: 0 } : t) });
       badge(get().threads.reduce((n, t) =>
         n + ((t.muted || usePrefs.getState().isMuted(t.id)) ? 0 : t.unread), 0));
-      if (!mine) desktopNotify(m, threadId, get());
     } catch { /* noop */ }
   },
   setFlags: async (id, p) => {
@@ -683,7 +682,9 @@ function handleEvent(
         last_at: m.created_at, unread: isActive || mine ? 0 : (t.unread || 0) + 1,
       } : t) });
       if (isActive && !mine) post(`/api/threads/${threadId}/read`).catch(() => {});
-      badge(get().threads.reduce((n, t) => n + (t.muted ? 0 : t.unread), 0));
+      badge(get().threads.reduce((n, t) =>
+        n + ((t.muted || usePrefs.getState().isMuted(t.id)) ? 0 : t.unread), 0));
+      if (!mine) desktopNotify(m, threadId, get());
       break;
     }
     case "message-updated": {
