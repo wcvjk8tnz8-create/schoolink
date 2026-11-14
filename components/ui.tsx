@@ -7,9 +7,12 @@ import { LogoMark } from "./Logo";
 import { Icon } from "./Icon";
 import { AvatarVisual } from "./AvatarPicker";
 import type { User } from "@/lib/types";
+import { M3_MOTION } from "@/lib/m3";
 
-export const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
-export const softSpring = { type: "spring" as const, stiffness: 180, damping: 22 };
+/** M3 motion：强调曲线 + 弹簧，统一全站微交互 */
+export const spring = { type: "spring" as const, stiffness: 420, damping: 34 };
+export const softSpring = { type: "spring" as const, stiffness: 260, damping: 30 };
+export const m3Ease = M3_MOTION.standard;
 
 export function Avatar({ user, name, id, size = 40, online = false, className = "", avatarKey }: {
   user?: User | null; name?: string; id?: string; size?: number; online?: boolean;
@@ -61,7 +64,7 @@ export function Toast() {
           initial={{ y: 28, opacity: 0, scale: 0.92 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           exit={{ y: 12, opacity: 0, scale: 0.95 }}
-          transition={softSpring}
+          transition={{ duration: M3_MOTION.medium1, ease: M3_MOTION.decelerate }}
           onClick={() => useApp.getState().dismissToast()}
         >
           <span className="toast-dot" />
@@ -82,7 +85,7 @@ export function InstallBanner() {
       {show && (
         <motion.div className="install-banner"
           initial={{ y: -90, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -90, opacity: 0 }} transition={softSpring}>
+          exit={{ y: -90, opacity: 0 }} transition={{ duration: M3_MOTION.medium1, ease: M3_MOTION.accelerate }}>
           <LogoMark size={38} />
           <div>
             <strong>{t("installTitle")}</strong>

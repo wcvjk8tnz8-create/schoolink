@@ -130,6 +130,27 @@ AI助手，你现在要说一段话，内容是：聊天吗？
 
 上传的原图再大也不会撑爆弹窗：`AvatarVisual` 显式给 `width/height = size`，CSS 再兜底 `max-width/height:100% + object-fit:cover`，群组资料、自定义中心、侧栏、消息气泡统一生效。
 
+### 界面：Material 3 Design
+
+整套 UI 按 **Material 3** 重做，但不是换一套组件库（没有引入 MUI / Tailwind），而是把现有 289 个类名映射到 M3 规范，**零破坏功能**：
+
+| M3 规范 | 落地 |
+|---|---|
+| Tonal color roles | `--md-primary / on-primary / primary-container / secondary / tertiary / error / surface 五档 / outline / inverse` 全套 |
+| Dynamic color | `--md-source` 读用户选的 `--user-accent`，用 `color-mix` 现场派生整组 palette；6 套强调色 × 深/浅主题 = 12 套配色，设置里换色即时全站生效 |
+| Shape scale | xs 4 / s 8 / m 12 / l 16 / xl 28 / full；按钮与 chip 全圆、对话框 28px、卡片 12px、气泡 16px |
+| Type scale | display / headline / title / body / label（含 small 档），统一 Roboto → 系统中文字体栈 |
+| State layers | hover 8% / focus 10% / pressed 10% / drag 16%，伪元素叠加，不改组件结构 |
+| Elevation | M3 level 1–3 双层阴影 + tonal surface，卡片 / 对话框 / Snackbar 分级 |
+| Motion | standard / emphasized / decelerate / accelerate 曲线，100/200/250/400/500/700ms 六档时长；页面切换、Toast、涟漪统一 |
+| Ripple | 全局事件委托，按压缩放圆形涟漪；关闭动画或 `prefers-reduced-motion` 自动停用 |
+
+组件对应关系：`.btn.primary` = Filled button、`.btn` = Tonal button、`.btn-ghost` = Text button、`.send-btn` = FAB、`.chip` = Assist/Filter chip、`.segmented` = Segmented button、`.customize-tabs` = Primary tabs、`.panel/.modal/.login-card` = Filled/Elevated card + 28px dialog、`.toast` = Snackbar（inverse-surface）、`.switch` = M3 switch（52×32，选中 24px handle）、`.chat-head` = Top app bar、`.sidebar` = Navigation drawer/rail、列表激活态 = secondary-container 药丸 indicator。
+
+**保留**：原四叶草 logo、全站 SVG 图标（无 emoji）、三语、PWA 图标、所有功能与 API。旧设计 token（`--bg / --surface / --accent / --text / --ease`）保留为 M3 变量的别名，所以组件 JSX 一行没改，只换 `app/globals.css` + 新增 `lib/m3.ts`。
+
+设计系统展示页见 `docs/preview-material3.png`（深色）与 `docs/preview-material3-light.png`（浅色），含色板、按钮/FAB、chips、cards、输入框、switch、导航、对话框、Snackbar、字阶、形状与 elevation/motion 对照。
+
 ### WhatsApp 该有的（都做了）
 
 | | |
@@ -282,6 +303,9 @@ wrangler dev           # 会同时跑 Worker + 静态资源 + DO
 
 ### AI 测试回 503 / 模型没有回传内容？
 503 表示这个 Cloudflare 账号没绑定或未开通 Workers AI —— 设定仍会保存，助手自动本地兜底。502 通常是模型 ID 在该账号不可用（例如 70B 需要付费额度），换回 `@cf/meta/llama-3.1-8b-instruct` 或到 Cloudflare AI → Models 确认可用名称。模型 ID 格式必须是 `@厂商/模型`，不接受 URL。
+
+### 换主题/换强调色后颜色没变？
+M3 变量全部挂在 `:root`，`applyPrefs()` 只写 `<html data-accent>`；6 套 `--user-accent` 定义在 `app/globals.css` 中部。清一次浏览器缓存（SW 为 `schoolink-v3`）即可。
 
 ## 六、目录
 

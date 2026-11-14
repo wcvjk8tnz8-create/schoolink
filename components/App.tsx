@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { usePrefs, applyPrefs } from "@/lib/prefs";
+import { installM3Ripple, m3ViewTransition, M3_MOTION } from "@/lib/m3";
 import { useApp } from "@/lib/store";
 import { Clover } from "./Logo";
 import { Toast, InstallBanner, Spinner } from "./ui";
@@ -20,7 +21,9 @@ export default function App() {
   useEffect(() => {
     useApp.getState().init();
     applyPrefs(usePrefs.getState());
-    return usePrefs.subscribe(applyPrefs);
+    const detachRipple = installM3Ripple();
+    const unsub = usePrefs.subscribe(applyPrefs);
+    return () => { detachRipple(); unsub(); };
   }, []);
 
   // 点击桌面通知后打开对应会话
@@ -61,7 +64,7 @@ export default function App() {
         {view === "loading" && (
           <motion.div key="loading" className="splash"
             initial={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }}
-            transition={{ duration: 0.45 }}>
+            transition={{ duration: M3_MOTION.medium2, ease: M3_MOTION.standard }}>
             <Clover size={112} />
             <motion.div className="splash-name"
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -75,19 +78,19 @@ export default function App() {
         {(view === "login") && (
           <motion.div key="login" className="view-fill"
             initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.35 }}><Login /></motion.div>
+            transition={m3ViewTransition}><Login /></motion.div>
         )}
 
         {(view === "admin" || view === "admin-login") && (
           <motion.div key="admin" className="view-fill"
             initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.35 }}><Admin /></motion.div>
+            transition={m3ViewTransition}><Admin /></motion.div>
         )}
 
         {view === "chat" && (
           <motion.div key="chat" className="view-fill"
             initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.99 }} transition={{ duration: 0.35 }}><Chat /></motion.div>
+            exit={{ opacity: 0, scale: 0.99 }} transition={m3ViewTransition}><Chat /></motion.div>
         )}
       </AnimatePresence>
 

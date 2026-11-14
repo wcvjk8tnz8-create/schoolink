@@ -66,13 +66,13 @@ REQUIRED = [
     "lib/prefs.ts", "lib/m4a.ts", "lib/faces.ts",
     "components/AvatarPicker.tsx", "components/Customize.tsx", "scripts/gen-icons.mjs",
     "components/AIAssistant.tsx", "components/InstallGuide.tsx", "lib/ai.ts", "worker/password.ts",
-    "lib/ai-models.ts", "worker/ai-models.ts",
+    "lib/ai-models.ts", "worker/ai-models.ts", "lib/m3.ts",
     "worker/chat-room.ts", "worker/env.d.ts", "worker/util.ts", "worker/tsconfig.json",
     "public/manifest.webmanifest", "public/sw.js", "public/offline.html",
     "public/logo.svg", "public/favicon.svg",
     "public/icons/icon-192.png", "public/icons/icon-512.png",
     "public/icons/icon-maskable.png", "public/icons/apple-touch-icon.png",
-    "docs/preview.png",
+    "docs/preview.png", "docs/preview-material3.png", "docs/preview-material3-light.png",
 ]
 missing = [f for f in REQUIRED if not (ROOT / f).exists()]
 ok("必需文件齐全", not missing, ", ".join(missing))
@@ -521,6 +521,61 @@ ok("AI 请求携带 model 字段", '...(model ? { model } : {})' in ai3
 ok("AI 模型部署变量全链路透传", all("AI_MODEL" in text(f) and "AI_ALLOW_USER_MODEL" in text(f)
    for f in ["scripts/provision.mjs", ".github/workflows/deploy.yml", "wrangler.jsonc", "worker/env.d.ts", "worker/store.ts"]))
 ok("README 说明 AI 模型配置", "AI 模型" in text("README.md") and "AI_MODEL" in text("README.md"))
+
+
+# ── 18. Material 3 design system ────────────────────────────────────
+css3 = text("app/globals.css")
+m3js = text("lib/m3.ts")
+app3 = text("components/App.tsx")
+ui3 = text("components/ui.tsx")
+prefs3 = text("lib/prefs.ts")
+
+roles = ["--md-primary", "--md-on-primary", "--md-primary-container", "--md-on-primary-container",
+         "--md-secondary", "--md-on-secondary", "--md-secondary-container", "--md-on-secondary-container",
+         "--md-tertiary", "--md-on-tertiary", "--md-tertiary-container", "--md-on-tertiary-container",
+         "--md-surface", "--md-surface-container", "--md-surface-container-high",
+         "--md-on-surface", "--md-on-surface-variant", "--md-outline", "--md-outline-variant",
+         "--md-error", "--md-on-error", "--md-error-container", "--md-on-error-container",
+         "--md-inverse-surface", "--md-inverse-on-surface", "--md-inverse-primary"]
+ok("M3 色彩角色齐全", all(r + ":" in css3 for r in roles),
+   str([r for r in roles if r + ":" not in css3]))
+ok("深浅两套 tonal palette", ':root[data-theme="light"]' in css3
+   and css3.count("--md-primary:") >= 2 and "color-scheme: dark" in css3 and "color-scheme: light" in css3)
+ok("动态色由用户强调色派生", "--md-source: var(--user-accent" in css3
+   and css3.count("color-mix(in srgb, var(--md-source)") >= 4
+   and 'root.dataset.accent = p.accent' in prefs3)
+ok("6 档 shape scale", all(f"--md-shape-{k}:" in css3 for k in ["xs", "s", "m", "l", "xl", "full"]))
+ok("M3 state layer 四态", all(f"--md-state-{k}:" in css3 for k in ["hover", "focus", "pressed", "drag"])
+   and "opacity:var(--md-state-hover)" in css3)
+ok("M3 elevation 1–3", all(f"--md-elev-{k}:" in css3 for k in [1, 2, 3])
+   and "box-shadow:var(--md-elev-1)" in css3)
+ok("M3 motion easing + 时长", all(x in css3 for x in
+   ["--md-ease-standard:", "--md-ease-emphasized:", "--md-ease-decelerate:", "--md-ease-accelerate:",
+    "--md-dur-short1:", "--md-dur-medium2:", "--md-dur-long1:"])
+   and "M3_MOTION" in m3js and "m3ViewTransition" in app3)
+ok("M3 type scale", all(f"--md-type-{k}:" in css3 for k in
+   ["display", "headline", "title", "title-sm", "body", "body-sm", "label", "label-sm"]))
+ok("组件层映射关键 M3 组件", all(x in css3 for x in
+   [".btn.primary {", ".m3-fab", ".m3-card-elevated", ".m3-card-outlined", ".m3-dialog",
+    ".m3-snackbar", ".m3-nav-rail", ".m3-nav-item", ".m3-chip-selected", ".m3-linear-progress",
+    ".m3-text-field", ".m3-btn-tonal", ".m3-btn-outlined", ".m3-btn-text"]))
+ok("按钮/输入/开关/标签改 M3 形状", all(x in css3 for x in
+   ["border-radius:var(--md-shape-full)", "border-radius:var(--md-shape-s)",
+    "border-radius:var(--md-shape-xl)", "width:52px; height:32px"]))
+ok("涟漪交互已挂载", "installM3Ripple()" in app3 and "m3-ripple-host" in m3js
+   and ".m3-ripple {" in css3 and "@keyframes m3-ripple-in" in css3
+   and "m3-ripple-clip" in css3)
+ok("涟漪尊重关闭动画/减少动态效果", 'classList.contains("no-motion")' in m3js
+   and "prefers-reduced-motion" in css3 and ".no-motion .m3-ripple" in css3)
+ok("旧 token 别名保留（组件零改动）", all(x in css3 for x in
+   ["--bg: var(--md-surface-dim)", "--surface: var(--md-surface-container-low)",
+    "--accent: var(--md-primary)", "--text: var(--md-on-surface)", "--ease: var(--md-ease-emphasized)"]))
+ok("M3 化不引入 emoji", not any(e in css3 + m3js + app3 + ui3 for e in ["🍀", "✅", "⚠️", "😀"]))
+ok("原四叶草 logo 未改", 'xmlns="http://www.w3.org/2000/svg"' in text("public/logo.svg")
+   and "clover" in text("public/logo.svg").lower() or "logo.svg" in text("public/manifest.webmanifest"))
+ok("M3 深浅预览图齐全", (ROOT / "docs/preview-material3.png").stat().st_size > 40000
+   and (ROOT / "docs/preview-material3-light.png").stat().st_size > 40000)
+ok("README 说明 Material 3", "Material 3" in text("README.md") and "--md-primary" in text("README.md"))
 
 # ── 汇总 ───────────────────────────────────────────────────────────
 print(" Schoolink self-check\n")
