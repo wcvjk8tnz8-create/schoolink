@@ -11,6 +11,8 @@ interface Env {
   IMAGES?: R2Bucket;
   /** 每个用户一个 Durable Object 信箱，负责 WebSocket 实时推送 */
   REALTIME: DurableObjectNamespace;
+  /** Workers AI（可选；未开通时 AI 助手自动降级为本地回复） */
+  AI?: { run: (model: string, input: Record<string, unknown>) => Promise<unknown> };
 
   // Worker Secrets
   SESSION_SECRET?: string;
@@ -24,4 +26,5 @@ interface Env {
   SCHOOL_NAME?: string;
   ALLOW_DEV_OTP?: string;
   R2_PUBLIC_BASE_URL?: string;
+  REQUIRE_BOUND_EMAIL?: string;
 }

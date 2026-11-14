@@ -112,19 +112,44 @@ export function clearCookie(kind: SessionKind = "user", secure = true): string {
   return `${meta.cookie}=; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Path=/; Max-Age=0`;
 }
 
-export async function issueOtp(env: Env, email: string): Promise<string> {
+/** 验证码按用途隔离：登录 / 绑定邮箱互不串用 */
+export type OtpScope = "login" | "bind";
+const otpKey = (scope: OtpScope, email: string) => `OTP:${scope}:${email}`;
+
+export async function issueOtp(env: Env, email: string, scope: OtpScope = "login"): Promise<string> {
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
   const code = String(buf[0] % 1_000_000).padStart(6, "0");
-  await kvPut(env.CACHE, `OTP:${email}`, JSON.stringify({ code, exp: Date.now() + 10 * 60_000 }), {
+  await kvPut(env.CACHE, otpKey(scope, email), JSON.stringify({ code, exp: Date.now() + 10 * 60_000 }), {
     expirationTtl: 600,
   });
   return code;
 }
 
-export async function consumeOtp(env: Env, email: string, code: unknown): Promise<boolean> {
-  const raw = await env.CACHE.get<{ code: string; exp: number }>(`OTP:${email}`, "json");
+export async function consumeOtp(
+  env: Env, email: string, code: unknown, scope: OtpScope = "login",
+): Promise<boolean> {
+  const key = otpKey(scope, email);
+  const raw = await env.CACHE.get<{ code: string; exp: number }>(key, "json");
   if (!raw || raw.exp < Date.now() || !timingSafeEqual(raw.code, String(code ?? "").trim())) return false;
-  await env.CACHE.delete(`OTP:${email}`);
+  await env.CACHE.delete(key);
   return true;
+}
+
+/* ── 班别 / 学号：6C + 04 → 6C04 ───────────────────────────────── */
+
+export function normClass(v: unknown): string {
+  return String(v ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+}
+
+export function normStudentNo(v: unknown): string {
+  return String(v ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+}
+
+export function loginKeyOf(c: string, n: string): string {
+  return c && n ? `${c}${n}` : "";
+}
+
+export function isPlaceholderEmail(email: string): boolean {
+  return email.startsWith("noemail-") && email.endsWith("@schoolink.invalid");
 }

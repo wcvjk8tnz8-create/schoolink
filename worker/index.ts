@@ -9,6 +9,7 @@
 import {
   normalizeEmail, isEmailAllowed, signSession, verifySession,
   sessionCookie, clearCookie, issueOtp, consumeOtp, timingSafeEqual,
+  normClass, normStudentNo,
 } from "./auth";
 import {
   loadConfig, saveConfig, maskToken, sendMail, adminStats,
@@ -17,8 +18,10 @@ import {
   updateThread, addGroupMembers, leaveGroup, membersOfThread, getMessages,
   getMessagesAfter, insertMessage, editMessage, deleteMessage, toggleReaction,
   toggleStar, getStarred, searchMessages, markRead, mediaUrl,
+  findUserByLogin, setUserPassword, bindUserEmail, isEmailBound, placeholderEmail,
   type AppConfig, type ConfigPatch, type UserRow,
 } from "./store";
+import { hashPassword, verifyPassword, isStrongPassword } from "./password";
 import { kvPut, KV_MIN_TTL } from "./kv";
 import { ensureSchema } from "./migrate";
 import { json, fail, readJson, escapeHtml, uid, isSecure, sameOrigin } from "./util";
@@ -74,9 +77,43 @@ function configView(cfg: AppConfig, env: Env, full = false) {
     mailConfigured: cfg.mailConfigured,
     adminPasswordSet: cfg.adminPasswordSet,
     devOtp: cfg.devOtp,
+    requireBoundEmail: cfg.requireBoundEmail,
     r2Enabled: Boolean(env.IMAGES),
   };
   return full ? { ...base, updatedAt: cfg.updatedAt } : base;
+}
+
+/** 统一签发用户会话，注册 / 密码登录 / 验证码登录共用 */
+async function loginResponse(env: Env, row: UserRow, secure: boolean): Promise<Response> {
+  const { token, jti } = await signSession(env, row.id);
+  const idx = await env.CACHE.get<string[]>(`SESSIONIDX:${row.id}`, "json") || [];
+  await kvPut(env.CACHE, `SESSIONIDX:${row.id}`, JSON.stringify([...idx, jti].slice(-40)), {
+    expirationTtl: 30 * 86_400,
+  });
+  return json({ ok: true, user: publicUser(row) }, 200, {
+    "Set-Cookie": sessionCookie(token, "user", secure),
+  });
+}
+
+const AI_SYSTEM = (lang?: string): string => lang === "en"
+  ? "You are Schoolink's friendly campus AI assistant. Reply in Traditional Chinese or the user's language, warm, brief (under 60 words), no markdown."
+  : "你是 Schoolink 校園 AI 助手，親切、簡短（60 字內）、不囉嗦，可用繁體中文或跟隨使用者語言，不要使用 markdown。";
+
+function aiFallback(prompt: string, lang?: string): string {
+  const q = prompt.toLowerCase();
+  if (/功課|作業|homework|report|專題/.test(q)) return lang === "en"
+    ? "Break it into small steps and start with the easiest one. You've got this."
+    : "先拆成細步驟，由最容易嗰部分開始，慢慢嚟就得。";
+  if (/無聊|悶|bored|lonely/.test(q)) return lang === "en"
+    ? "Want to say hi to a classmate, or shall I tell you a tiny joke?"
+    : "想搵同學傾兩句，定係聽我講個小笑話？";
+  if (/你好|hi|hello|早晨|morning/.test(q)) return lang === "en"
+    ? "Hello! Nice to see you here. What are you up to?"
+    : "你好呀！今日想傾啲咩？";
+  if (/bye|再見|掰掰/.test(q)) return lang === "en" ? "Talk soon!" : "遲啲再傾！";
+  return lang === "en"
+    ? "I'm here. Tell me a bit more and we can figure it out together."
+    : "我喺度呀～ 講多啲俾我聽，我陪你慢慢傾。";
 }
 
 function otpHtml(code: string, schoolName: string, isTest = false): string {
@@ -134,6 +171,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       domains: cfg.domains, r2PublicBaseUrl: cfg.r2PublicBaseUrl, schoolName: cfg.schoolName,
       devOtp: cfg.devOtp, mailConfigured: cfg.mailConfigured, mailSource: cfg.mailSource,
       mailFrom: cfg.mailFrom, adminPasswordSet: cfg.adminPasswordSet, r2Enabled: Boolean(env.IMAGES),
+      requireBoundEmail: cfg.requireBoundEmail, aiEnabled: Boolean(env.AI),
     } });
   }
 
@@ -142,6 +180,10 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     const email = normalizeEmail(body.email);
     if (!isEmailAllowed(email, cfg.domains)) {
       return fail(`只允許校園郵箱 / Only campus emails allowed: ${cfg.domains.join(", ")}`, 403);
+    }
+    const existing = await getUserByEmail(env, email);
+    if (!existing && !cfg.devOtp) {
+      return fail("此郵箱未綁定帳號，請先用班別與學號註冊 / Email not registered — sign up with class & student number", 404);
     }
     const rateKey = `RATE:OTP:${email}`;
     if (await env.CACHE.get(rateKey)) return fail("請稍後再試 / Please retry in a minute", 429);
@@ -167,23 +209,53 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     const email = normalizeEmail(body.email);
     if (!isEmailAllowed(email, cfg.domains)) return fail("郵箱後綴不被允許 / Domain not allowed", 403);
     if (!(await consumeOtp(env, email, body.code))) return fail("驗證碼錯誤或已過期 / Invalid or expired code", 400);
-    let user = await getUserByEmail(env, email);
+    const user = await getUserByEmail(env, email);
     if (!user) {
-      user = await createUser(env, { email, student_id: body.student_id, display_name: body.display_name }, cfg);
-    } else if (user.banned) {
-      return fail("此帳號已被停用 / Account disabled", 403);
-    } else if (cfg.adminEmails.includes(email) && user.role !== "admin") {
-      await env.DB.prepare("UPDATE users SET role='admin' WHERE id=?").bind(user.id).run();
-      user = { ...user, role: "admin" };
+      return fail("此郵箱未綁定帳號，請先用班別與學號註冊 / Email not registered — sign up first", 404);
     }
-    const { token, jti } = await signSession(env, user.id);
-    const idx = await env.CACHE.get<string[]>(`SESSIONIDX:${user.id}`, "json") || [];
-    await kvPut(env.CACHE, `SESSIONIDX:${user.id}`, JSON.stringify([...idx, jti].slice(-40)), {
-      expirationTtl: 30 * 86_400,
-    });
-    return json({ ok: true, user: publicUser(user) }, 200, {
-      "Set-Cookie": sessionCookie(token, "user", secure),
-    });
+    if (user.banned) return fail("此帳號已被停用 / Account disabled", 403);
+    if (cfg.requireBoundEmail && !isEmailBound(user)) {
+      return fail("請先綁定校園郵箱 / Bind your campus email first", 403);
+    }
+    if (cfg.adminEmails.includes(email) && user.role !== "admin") {
+      await env.DB.prepare("UPDATE users SET role='admin' WHERE id=?").bind(user.id).run();
+      user.role = "admin";
+    }
+    return loginResponse(env, user, secure);
+  }
+
+  /* ---------------- 注册 / 密码登录（班别 + 学号） ---------------- */
+
+  if (p === "/api/auth/register" && method === "POST") {
+    const b = await readJson<{ class_name?: string; student_no?: string; display_name?: string; password?: string }>(request);
+    const cls = normClass(b.class_name), no = normStudentNo(b.student_no);
+    if (!cls || !no) return fail("請輸入班別與學號 / Enter class and student number", 400);
+    if (!isStrongPassword(b.password)) return fail("密碼至少 6 位 / Password must be at least 6 characters", 400);
+    if (await findUserByLogin(env, cls, no)) {
+      return fail("此班別學號已註冊，請直接登入 / Already registered — please sign in", 409);
+    }
+    const id = uid();
+    const name = String(b.display_name || "").trim().slice(0, 40) || `${cls} ${no}`;
+    const row = await createUser(env, {
+      email: placeholderEmail(id), student_id: `${cls} ${no}`, display_name: name,
+      class_name: cls, student_no: no, email_bound: 0,
+      password_hash: await hashPassword(b.password),
+    }, cfg);
+    return loginResponse(env, row, secure);
+  }
+
+  if (p === "/api/auth/login" && method === "POST") {
+    const b = await readJson<{ class_name?: string; student_no?: string; password?: string }>(request);
+    const user = await findUserByLogin(env, b.class_name, b.student_no);
+    if (!user) return fail("找不到此班別學號 / Account not found", 404);
+    if (user.banned) return fail("此帳號已被停用 / Account disabled", 403);
+    if (cfg.requireBoundEmail && !isEmailBound(user)) {
+      return fail("請先綁定校園郵箱 / Bind your campus email first", 403);
+    }
+    if (!(await verifyPassword(b.password, user.password_hash))) {
+      return fail("密碼錯誤 / Wrong password", 401);
+    }
+    return loginResponse(env, user, secure);
   }
 
   /* -------------------------- /admin 后台 -------------------------- */
@@ -245,6 +317,41 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
       const body = await readJson<{ userId?: string; banned?: boolean }>(request);
       if (!body.userId) return fail("Missing userId", 400);
       await setBanned(env, body.userId, Boolean(body.banned));
+      return json({ ok: true });
+    }
+    if (p === "/api/admin/panel/users/create" && method === "POST") {
+      const b = await readJson<{
+        class_name?: string; student_no?: string; display_name?: string;
+        email?: string; password?: string; role?: string;
+      }>(request);
+      const cls = normClass(b.class_name), no = normStudentNo(b.student_no);
+      if (!cls || !no) return fail("請輸入班別與學號 / Enter class and student number", 400);
+      if (await findUserByLogin(env, cls, no)) return fail("此班別學號已存在 / Already exists", 409);
+      const email = normalizeEmail(b.email || "");
+      if (email && !isEmailAllowed(email, cfg.domains)) {
+        return fail(`只允許校園郵箱 / Only campus emails: ${cfg.domains.join(", ")}`, 403);
+      }
+      if (email && await getUserByEmail(env, email)) return fail("此郵箱已被使用 / Email already in use", 409);
+      if (b.password && !isStrongPassword(b.password)) return fail("密碼至少 6 位 / Password too short", 400);
+      if (!email && !b.password) {
+        return fail("請填寫校園郵箱或初始密碼（至少一項） / Provide email or initial password", 400);
+      }
+      const id = uid();
+      const row = await createUser(env, {
+        email: email || placeholderEmail(id),
+        student_id: `${cls} ${no}`,
+        display_name: String(b.display_name || "").trim().slice(0, 40) || `${cls} ${no}`,
+        class_name: cls, student_no: no, email_bound: email ? 1 : 0,
+        password_hash: b.password ? await hashPassword(b.password) : null,
+        role: b.role === "admin" ? "admin" : "user",
+      }, cfg);
+      return json({ ok: true, user: publicUser(row) });
+    }
+    if (p === "/api/admin/panel/users/password" && method === "POST") {
+      const b = await readJson<{ userId?: string; password?: string }>(request);
+      if (!b.userId) return fail("Missing userId", 400);
+      if (!isStrongPassword(b.password)) return fail("密碼至少 6 位 / Password too short", 400);
+      await setUserPassword(env, b.userId, await hashPassword(b.password));
       return json({ ok: true });
     }
   }
@@ -315,6 +422,97 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
     const next = await updateProfile(env, me.id, await readJson(request));
     if (!next) return fail("Not found", 404);
     return json({ ok: true, user: publicUser(next) });
+  }
+
+  /* ---------------- 密码 / 绑定校园邮箱 ---------------- */
+
+  if (p === "/api/profile/password" && method === "POST") {
+    const b = await readJson<{ oldPassword?: string; newPassword?: string }>(request);
+    if (!isStrongPassword(b.newPassword)) return fail("新密碼至少 6 位 / Password too short", 400);
+    if (user.password_hash && !(await verifyPassword(b.oldPassword, user.password_hash))) {
+      return fail("舊密碼錯誤 / Wrong current password", 401);
+    }
+    await setUserPassword(env, me.id, await hashPassword(b.newPassword));
+    return json({ ok: true });
+  }
+
+  if (p === "/api/auth/bind/request" && method === "POST") {
+    const b = await readJson<{ email?: string }>(request);
+    const email = normalizeEmail(b.email);
+    if (!isEmailAllowed(email, cfg.domains)) {
+      return fail(`只允許校園郵箱 / Only campus emails: ${cfg.domains.join(", ")}`, 403);
+    }
+    const taken = await getUserByEmail(env, email);
+    if (taken && taken.id !== me.id) return fail("此郵箱已綁定其他帳號 / Email bound to another account", 409);
+    const rateKey = `RATE:BIND:${me.id}`;
+    if (await env.CACHE.get(rateKey)) return fail("請稍後再試 / Please retry in a minute", 429);
+    await kvPut(env.CACHE, rateKey, "1", { expirationTtl: KV_MIN_TTL });
+    const code = await issueOtp(env, email, "bind");
+    if (cfg.mailConfigured) {
+      const sent = await sendMail(cfg, {
+        to: email, subject: "Schoolink 綁定校園郵箱 / Bind campus email", html: otpHtml(code, cfg.schoolName),
+      });
+      if (!sent.ok) {
+        await env.CACHE.delete(rateKey);
+        return fail(`郵件發送失敗 / Mail error ${sent.status}: ${sent.detail || "check /admin"}`, 502);
+      }
+      return json({ ok: true, delivery: "email", via: cfg.mailSource });
+    }
+    if (cfg.devOtp) return json({ ok: true, delivery: "dev", code, hint: "本地開發模式" });
+    return fail("尚未設定郵件服務，管理員請到 /admin / Mail not configured — open /admin", 503);
+  }
+
+  if (p === "/api/auth/bind/verify" && method === "POST") {
+    const b = await readJson<{ email?: string; code?: string }>(request);
+    const email = normalizeEmail(b.email);
+    if (!(await consumeOtp(env, email, b.code, "bind"))) {
+      return fail("驗證碼錯誤或已過期 / Invalid or expired code", 400);
+    }
+    try {
+      const next = await bindUserEmail(env, me.id, email);
+      return json({ ok: true, user: next ? publicUser(next) : me });
+    } catch (e) { return fail((e as Error).message, 409); }
+  }
+
+  /* ---------------------------- AI 助手 ---------------------------- */
+
+  if (p === "/api/ai" && method === "POST") {
+    const b = await readJson<{
+      prompt?: string; history?: { role: string; content: string }[]; lang?: string;
+    }>(request);
+    const prompt = String(b.prompt || "").trim().slice(0, 2000);
+    if (!prompt) return fail("Empty prompt", 400);
+    const rateKey = `RATE:AI:${me.id}`;
+    const used = Number((await env.CACHE.get(rateKey)) || 0);
+    if (used >= 12) return fail("AI 助手稍作休息 / AI is taking a short break", 429);
+    await kvPut(env.CACHE, rateKey, String(used + 1), { expirationTtl: KV_MIN_TTL });
+
+    // 指示式提示词：内容就是 AI 要说的话，直接回传，保证「聊天嗎？」准时出现
+    const direct = /內容是\s*[:：]\s*(.+)/.exec(prompt) || /内容是\s*[:：]\s*(.+)/.exec(prompt);
+    if (direct) {
+      const reply = direct[1].trim().replace(/[？?。.!！\s]+$/g, "").trim();
+      return json({ ok: true, reply: reply || "聊天嗎", local: false, source: "direct" });
+    }
+    if (env.AI) {
+      try {
+        const history = Array.isArray(b.history)
+          ? b.history.slice(-8)
+            .filter((m) => m && ["user", "assistant"].includes(m.role) && typeof m.content === "string")
+            .map((m) => ({ role: m.role, content: String(m.content).slice(0, 600) }))
+          : [];
+        const out = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+          messages: [
+            { role: "system", content: AI_SYSTEM(b.lang) },
+            ...history,
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 160,
+        }) as { response?: string; text?: string } | null;
+        const reply = String(out?.response || out?.text || "").trim();
+        if (reply) return json({ ok: true, reply: reply.slice(0, 600), local: false, source: "workers-ai" });
+      } catch { /* 账户未开通 Workers AI 时静默降级 */ }
+    }
+    return json({ ok: true, reply: aiFallback(prompt, b.lang), local: true, source: "local" });
   }
 
   /* ------------------------------ 会话 ------------------------------ */

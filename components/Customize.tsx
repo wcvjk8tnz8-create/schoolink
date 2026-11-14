@@ -67,6 +67,36 @@ export function ProfileCustomize() {
   const [showOnline, setShowOnline] = useState(me?.show_online !== false);
   const [readReceipts, setReadReceipts] = useState(me?.read_receipts !== false);
   const [busy, setBusy] = useState(false);
+  const [bindMail, setBindMail] = useState("");
+  const [bindCode, setBindCode] = useState("");
+  const [bindSent, setBindSent] = useState(false);
+  const [bindBusy, setBindBusy] = useState(false);
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const doBind = async () => {
+    setBindBusy(true);
+    try {
+      if (!bindSent) {
+        const r = await useApp.getState().bindRequest(bindMail);
+        if (r.devCode) setBindCode(r.devCode);
+        setBindSent(true);
+      } else {
+        await useApp.getState().bindVerify(bindMail, bindCode);
+        setBindSent(false); setBindMail(""); setBindCode("");
+      }
+    } catch (e) { useApp.getState().toastMsg((e as Error).message, "err"); }
+    finally { setBindBusy(false); }
+  };
+  const doPassword = async () => {
+    setPwBusy(true);
+    try {
+      await useApp.getState().setPassword(oldPw, newPw);
+      setOldPw(""); setNewPw("");
+    } catch (e) { useApp.getState().toastMsg((e as Error).message, "err"); }
+    finally { setPwBusy(false); }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -101,6 +131,52 @@ export function ProfileCustomize() {
           label={L(lang, "已读回执", "已讀回執", "Read receipts")}
           hint={L(lang, "关闭后双方都看不到蓝色双勾", "關閉後雙方都見唔到藍色雙勾", "Disables blue ticks both ways")} />
       </Section>
+
+      <Section title={L(lang, "校园邮箱绑定（防止乱登入）", "校園郵箱綁定（防止亂登入）", "Bind campus email")} icon="mail">
+        <div className="bind-state">
+          <span className={`au-badge ${me?.email_bound ? "on" : "warn"}`}>
+            {me?.email_bound ? L(lang, "已绑定", "已綁定", "Bound") : L(lang, "未绑定", "未綁定", "Unbound")}</span>
+          <small>{me?.email_bound ? (me?.email || "") : L(lang,
+            "绑定后可用邮箱验证码登入，别人也无法冒用你的班别学号",
+            "綁定後可用電郵驗證碼登入，別人都無法冒用你嘅班別學號",
+            "Bind to enable email-code login and protect your class & number")}</small>
+        </div>
+        {!me?.email_bound && (
+          <div className="field"><label>{L(lang, "校园邮箱", "校園郵箱", "Campus email")}</label>
+            <input type="email" value={bindMail} onChange={(e) => setBindMail(e.target.value)}
+              placeholder={`201A0000${useApp.getState().config.domains[0] || "@plkshs.edu.hk"}`} disabled={bindSent} /></div>
+        )}
+        {bindSent && (
+          <div className="field"><label>{L(lang, "验证码", "驗證碼", "Code")}</label>
+            <input value={bindCode} onChange={(e) => setBindCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000" inputMode="numeric" maxLength={6} className="code-input" /></div>
+        )}
+        {!me?.email_bound && (
+          <button className="btn small" onClick={doBind}
+            disabled={bindBusy || (!bindSent ? !bindMail.trim() : bindCode.length !== 6)}>
+            {bindBusy ? L(lang, "处理中…", "處理中…", "Working…") : bindSent
+              ? L(lang, "确认绑定", "確認綁定", "Verify & bind") : L(lang, "发送验证码", "傳送驗證碼", "Send code")}
+          </button>
+        )}
+      </Section>
+
+      <Section title={L(lang, "登录密码", "登入密碼", "Sign-in password")} icon="key">
+        <p className="muted-line">{me?.has_password ? L(lang,
+          "已设置密码，可用班别 + 学号直接登入", "已設密碼，可用班別 + 學號直接登入",
+          "Password set — sign in with class & student number") : L(lang,
+          "旧账号只需验证码登入；也可在此补设密码", "舊帳號只需驗證碼登入；亦可喺此補設密碼",
+          "Legacy accounts use email codes; set a password here if you like")}</p>
+        {me?.has_password && (
+          <div className="field"><label>{L(lang, "当前密码", "目前密碼", "Current password")}</label>
+            <input type="password" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" /></div>
+        )}
+        <div className="field"><label>{L(lang, "新密码（至少 6 位）", "新密碼（至少 6 位）", "New password (min. 6)")}</label>
+          <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" /></div>
+        <button className="btn small" onClick={doPassword} disabled={pwBusy || newPw.length < 6}>
+          {pwBusy ? L(lang, "处理中…", "處理中…", "Working…") : L(lang, "设置 / 更新密码", "設定 / 更新密碼", "Set / update password")}
+        </button>
+      </Section>
+
       <button className="btn primary big full" disabled={busy} onClick={save}>
         {busy ? L(lang, "保存中…", "儲存中…", "Saving…") : L(lang, "保存资料", "儲存資料", "Save profile")}
       </button>
@@ -355,6 +431,32 @@ function ToolsPrefs() {
             </AnimatePresence>
           </div>
         )}
+      </Section>
+
+      <Section title={L(lang, "安装到主屏（PWA）", "安裝到主屏（PWA）", "Install as app")} icon="install">
+        <p className="muted-line">{L(lang,
+          "iPad / iPhone 请用 Safari 分享菜单加入主屏幕；Chrome 可直接安装。按钮一定有反应，不会点了没动静。",
+          "iPad / iPhone 請用 Safari 分享選單加入主屏幕；Chrome 可直接安裝。掣一定有反應，唔會撳咗冇動靜。",
+          "On iPad/iPhone use Safari Share → Add to Home Screen; Chrome installs directly. The button always responds.")}</p>
+        <div className="pref-inline">
+          <button className="btn small" onClick={() => useApp.getState().doInstall()}>
+            <Icon name="install" size={15} /> {L(lang, "安装 / 查看步骤", "安裝 / 查看步驟", "Install / view steps")}
+          </button>
+          <button className="btn small" onClick={() => useApp.getState().setInstallGuide(true)}>
+            <Icon name="info" size={15} /> {L(lang, "手动安装说明", "手動安裝說明", "Manual instructions")}
+          </button>
+        </div>
+      </Section>
+
+      <Section title={L(lang, "AI 助手", "AI 助手", "AI assistant")} icon="smile">
+        <Switch on={p.aiIdle} onChange={(v) => p.patch("aiIdle", v)}
+          label={L(lang, "闲置 1 分钟自动弹出", "閒置 1 分鐘自動彈出", "Pop up after 1 min idle")}
+          hint={L(lang, "系统会发一句「聊天吗？」给 AI 助手，像 WhatsApp 气泡一样弹出",
+            "系統會送一句「聊天嗎？」俾 AI 助手，似 WhatsApp 氣泡咁彈出",
+            "Sends a prompt to the AI and shows a WhatsApp-style bubble")} />
+        <button className="btn small" onClick={() => useApp.getState().setAiOpen(true)}>
+          <Icon name="send" size={14} /> {L(lang, "现在找 AI 助手聊天", "而家搵 AI 助手傾偈", "Chat with AI now")}
+        </button>
       </Section>
 
       <Section title={L(lang, "备份偏好", "備份偏好", "Backup preferences")} icon="download">

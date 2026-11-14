@@ -75,6 +75,8 @@ export function Toast() {
 export function InstallBanner() {
   const show = useApp((s) => s.showInstall);
   const t = useApp((s) => s.t);
+  const lang = useApp((s) => s.lang);
+  const hasPrompt = useApp((s) => Boolean(s.installPrompt));
   return (
     <AnimatePresence>
       {show && (
@@ -86,7 +88,9 @@ export function InstallBanner() {
             <strong>{t("installTitle")}</strong>
             <p>{t("installDesc")}</p>
           </div>
-          <button className="btn primary small" onClick={() => useApp.getState().doInstall()}>{t("install")}</button>
+          <button className="btn primary small" onClick={() => useApp.getState().doInstall()}>
+            {hasPrompt ? t("install") : (lang === "en" ? "How to install" : lang === "zh-HK" ? "如何安裝" : "如何安装")}
+          </button>
           <button className="icon-btn ghost" onClick={() => useApp.getState().dismissInstall()}><Icon name="close" size={16} /></button>
         </motion.div>
       )}

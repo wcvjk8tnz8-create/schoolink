@@ -56,6 +56,7 @@ export interface Prefs {
   clock: ClockKey;
   sendWithEnter: boolean;
   notifications: boolean;
+  aiIdle: boolean;
   quickPhrases: string[];
   /** 会话静音到期时间戳；0 = 未静音，Infinity 存成 4102444800000（2100 年） */
   muteUntil: Record<string, number>;
@@ -77,6 +78,7 @@ const DEFAULTS = {
   clock: "24h" as ClockKey,
   sendWithEnter: true,
   notifications: true,
+  aiIdle: true,
   quickPhrases: [...DEFAULT_PHRASES],
   muteUntil: {} as Record<string, number>,
 };
@@ -94,10 +96,10 @@ function load(): typeof DEFAULTS {
 
 function persist(state: Prefs) {
   const { accent, wallpaper, font, compact, animations, clock, sendWithEnter,
-    notifications, quickPhrases, muteUntil } = state;
+    notifications, aiIdle, quickPhrases, muteUntil } = state;
   try {
     localStorage.setItem(KEY, JSON.stringify({ accent, wallpaper, font, compact, animations,
-      clock, sendWithEnter, notifications, quickPhrases, muteUntil }));
+      clock, sendWithEnter, notifications, aiIdle, quickPhrases, muteUntil }));
   } catch { /* 隐私模式下不持久化，内存里仍生效 */ }
 }
 

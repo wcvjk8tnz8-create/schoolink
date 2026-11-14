@@ -572,7 +572,13 @@ input:focus,textarea:focus { border-color:var(--accent) !important; }
 /* ── 头像可视化（preset / tint / 图片） ─────────────────────────────── */
 .av-visual { display:grid; place-items:center; border-radius:50%; overflow:hidden; color:#fff; font-weight:700; flex:none; }
 .avatar .av-visual { width:100%; height:100%; font-size:inherit; }
-.av-visual.av-img { object-fit:cover; }
+.av-visual.av-img { object-fit:cover; max-width:100%; max-height:100%; }
+/* 任何来源的图片头像都不得超出容器：上传原图再大也自动缩小 */
+.avatar img.av-visual, .avatar-picker img.av-visual, .ap-current img.av-visual,
+.ap-item img.av-visual, .pref-section img.av-visual {
+  max-width:100%; max-height:100%; width:100%; height:100%; object-fit:cover;
+}
+.customize-modal img, .modal-body img { max-width:100%; }
 .av-preset .svg-icon { color:#fff; filter:drop-shadow(0 1px 2px rgba(0,0,0,.18)); }
 .ap-spin { animation:spin .85s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
@@ -660,3 +666,104 @@ input:focus,textarea:focus { border-color:var(--accent) !important; }
 .composer-readonly { display:flex; align-items:center; gap:6px; flex:1; font-size:12px; color:var(--muted); }
 .phrase-menu { width:min(280px,90vw); max-height:260px; overflow-y:auto; }
 .phrase-menu button { font-size:11.5px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ══════════════ 班别学号登录 / 绑定 / 管理员控制台 ══════════════ */
+.login-card-wide { width:min(100%,470px); }
+.login-tabs { display:flex; gap:5px; background:var(--surface2); border:1px solid var(--line);
+  border-radius:12px; padding:4px; margin:2px 0 16px; }
+.login-tabs button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:8px 6px; border-radius:9px; font-size:12px; color:var(--muted); }
+.login-tabs button.on { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+.field-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.field-pair .field { margin-bottom:15px; }
+.notice.soft { background:var(--accent-soft); border-color:var(--line2); color:var(--text); }
+.otp-note { display:flex; align-items:center; gap:7px; color:var(--muted2); font-size:11px; margin-bottom:12px; }
+.bind-success { display:flex; align-items:center; gap:11px; background:rgba(37,194,110,.09);
+  border:1px solid rgba(37,194,110,.25); border-radius:13px; padding:12px; margin-bottom:14px; }
+.bind-check { width:34px; height:34px; border-radius:50%; background:var(--green); color:#fff;
+  display:grid; place-items:center; flex:none; }
+.bind-success strong { display:block; font-size:13px; }
+.bind-success small { color:var(--muted); font-size:11px; }
+.bind-state { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.bind-state small { color:var(--muted2); font-size:11px; flex:1; min-width:180px; }
+.au-badge.warn { background:rgba(255,200,87,.13); color:var(--warn); }
+.admin-check { display:flex; align-items:flex-start; gap:9px; background:var(--surface);
+  border:1px solid var(--line); border-radius:11px; padding:10px 12px; margin-top:6px; cursor:pointer; }
+.admin-check input { margin-top:3px; accent-color:var(--accent); }
+.admin-check span { display:flex; flex-direction:column; gap:2px; }
+.admin-check strong { font-size:12px; font-weight:600; }
+.admin-check small { color:var(--muted2); font-size:10.5px; }
+.admin-add-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; margin-top:10px; }
+.admin-add-grid .field { margin-bottom:12px; }
+.admin-add-grid select, .admin-add-grid input { width:100%; background:var(--surface2);
+  border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:12.5px; color:var(--text); }
+.admin-add-actions { display:flex; gap:8px; margin-top:6px; }
+@media (max-width:560px) { .admin-add-grid { grid-template-columns:1fr; } }
+
+/* ══════════════════════ AI 助手（WhatsApp 风格浮窗） ══════════════════════ */
+.ai-bubble-wrap { position:fixed; right:20px; bottom:20px; z-index:110; width:min(310px,calc(100vw - 32px));
+  background:var(--surface); border:1px solid var(--line2); border-radius:18px;
+  box-shadow:var(--shadow); overflow:hidden; }
+.ai-bubble-head { display:flex; align-items:center; gap:9px; padding:11px 12px;
+  background:linear-gradient(120deg,rgba(139,123,255,.16),rgba(77,148,255,.10)); border-bottom:1px solid var(--line); }
+.ai-av { position:relative; width:34px; height:34px; display:grid; place-items:center; flex:none; }
+.ai-av .clover { width:30px; height:30px; }
+.ai-online { position:absolute; right:0; bottom:0; width:9px; height:9px; border-radius:50%;
+  background:var(--green); border:2px solid var(--surface); }
+.ai-bubble-head div { display:flex; flex-direction:column; line-height:1.25; flex:1; }
+.ai-bubble-head strong { font-size:12.5px; }
+.ai-bubble-head small { color:var(--green); font-size:10px; }
+.ai-x { width:26px; height:26px; border-radius:8px; display:grid; place-items:center; color:var(--muted); }
+.ai-x:hover { background:var(--surface2); }
+.ai-bubble-msg { margin:13px 12px; padding:11px 13px; border-radius:14px 14px 14px 4px;
+  background:var(--bubble-in); border:1px solid var(--line); font-size:13.5px; min-height:38px;
+  display:flex; align-items:center; animation:ai-pop .35s var(--ease); }
+@keyframes ai-pop { from { transform:scale(.9); opacity:0 } to { transform:scale(1); opacity:1 } }
+.ai-bubble-actions { display:flex; gap:7px; padding:0 12px 12px; }
+.ai-bubble-actions button { flex:1; padding:8px; border-radius:10px; background:var(--surface2); font-size:11.5px; }
+.ai-bubble-actions button.primary { background:var(--accent); color:#fff; display:flex;
+  align-items:center; justify-content:center; gap:5px; }
+
+.ai-panel { position:fixed; right:20px; bottom:20px; z-index:111; width:min(360px,calc(100vw - 32px));
+  height:min(520px,calc(100dvh - 40px)); display:flex; flex-direction:column;
+  background:var(--surface); border:1px solid var(--line2); border-radius:18px;
+  box-shadow:var(--shadow); overflow:hidden; }
+.ai-panel-head { display:flex; align-items:center; gap:9px; padding:11px 13px;
+  background:linear-gradient(120deg,rgba(139,123,255,.16),rgba(77,148,255,.10)); border-bottom:1px solid var(--line); }
+.ai-panel-head div { display:flex; flex-direction:column; line-height:1.25; }
+.ai-panel-head strong { font-size:12.5px; }
+.ai-panel-head small { color:var(--muted2); font-size:10px; }
+.ai-msgs { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:8px;
+  background:var(--bg); background-image:radial-gradient(currentColor .6px,transparent .6px);
+  background-size:18px 18px; }
+.ai-msg { max-width:82%; padding:9px 12px; border-radius:14px; font-size:12.8px;
+  line-height:1.5; word-break:break-word; white-space:pre-wrap; }
+.ai-msg.assistant { align-self:flex-start; background:var(--bubble-in);
+  border:1px solid var(--line); border-bottom-left-radius:4px; }
+.ai-msg.user { align-self:flex-end; background:var(--bubble-out); color:#fff;
+  border-bottom-right-radius:4px; }
+.ai-input { display:flex; gap:7px; padding:10px; border-top:1px solid var(--line); background:var(--surface); }
+.ai-input input { flex:1; min-width:0; background:var(--surface2); border:1px solid var(--line);
+  border-radius:11px; padding:9px 11px; font-size:12.5px; }
+.ai-input button { width:38px; border-radius:11px; background:var(--accent); color:#fff;
+  display:grid; place-items:center; }
+.ai-input button:disabled { opacity:.45; }
+.ai-foot { padding:0 12px 9px; font-size:9.5px; color:var(--muted2); text-align:center; background:var(--surface); }
+@media (max-width:560px) {
+  .ai-bubble-wrap, .ai-panel { right:12px; left:12px; bottom:12px; width:auto; }
+  .ai-panel { height:min(70dvh,520px); }
+}
+
+/* ══════════════════════ PWA 安装指引 ══════════════════════ */
+.install-guide { width:min(100%,430px); }
+.ig-hero { display:flex; align-items:center; gap:14px; padding:6px 0 16px; }
+.ig-hero div { display:flex; flex-direction:column; gap:2px; }
+.ig-hero strong { font-size:16px; }
+.ig-hero small { color:var(--muted); font-size:11.5px; }
+.ig-steps { display:flex; flex-direction:column; gap:9px; margin-bottom:13px; }
+.ig-step { display:flex; align-items:center; gap:11px; background:var(--surface2);
+  border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:12.5px; }
+.ig-num { width:24px; height:24px; border-radius:50%; background:var(--accent-soft); color:var(--accent);
+  display:grid; place-items:center; font-size:11px; font-weight:700; flex:none; }
+.ig-done { display:flex; align-items:center; gap:9px; padding:14px; border-radius:12px;
+  background:rgba(37,194,110,.1); color:var(--green); font-size:12.5px; }

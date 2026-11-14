@@ -1,4 +1,4 @@
-import { normalizeDomains, normalizeEmail } from "./auth";
+import { normalizeDomains, normalizeEmail, normClass, normStudentNo, loginKeyOf, isPlaceholderEmail } from "./auth";
 import { kvPut } from "./kv";
 import { uid } from "./util";
 
@@ -16,6 +16,7 @@ export interface AppConfig {
   mailConfigured: boolean;
   adminPasswordSet: boolean;
   devOtp: boolean;
+  requireBoundEmail: boolean;
   updatedAt: number | null;
 }
 
@@ -24,6 +25,8 @@ export interface UserRow {
   about: string; avatar_key: string | null; role: string; banned: number;
   created_at: number; last_seen: number;
   show_online: number; read_receipts: number;
+  class_name: string; student_no: string; login_key: string;
+  password_hash: string | null; email_bound: number;
 }
 
 export interface MessageRow {
@@ -43,6 +46,7 @@ export interface ConfigPatch {
   mailApiToken?: string;
   mailFrom?: string;
   mailApiBase?: string;
+  requireBoundEmail?: boolean | string;
 }
 
 const THREAD_CACHE_TTL = 60;
@@ -80,6 +84,8 @@ export async function loadConfig(env: Env): Promise<AppConfig> {
     mailConfigured: Boolean(mailApiToken),
     adminPasswordSet: Boolean(env.ADMIN_PASSWORD),
     devOtp: String(env.ALLOW_DEV_OTP || "0") === "1",
+    requireBoundEmail: s.requireBoundEmail === true || s.requireBoundEmail === "1"
+      || (s.requireBoundEmail === undefined && String(env.REQUIRE_BOUND_EMAIL || "0") === "1"),
     updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : null,
   };
 }
@@ -106,6 +112,9 @@ export async function saveConfig(env: Env, patch: ConfigPatch): Promise<AppConfi
     mailApiBase: patch.mailApiBase !== undefined
       ? String(patch.mailApiBase).trim().replace(/\/+$/, "")
       : (typeof saved.mailApiBase === "string" ? saved.mailApiBase : ""),
+    requireBoundEmail: patch.requireBoundEmail !== undefined
+      ? (patch.requireBoundEmail === true || patch.requireBoundEmail === "1" || patch.requireBoundEmail === "on")
+      : cur.requireBoundEmail,
     updatedAt: Date.now(),
   };
   if (!(next.domains as string[]).length) throw new Error("至少需要保留一个邮箱后缀");
@@ -133,10 +142,16 @@ export async function sendMail(
 /* ============================== 用户 ============================== */
 
 export const publicUser = (r: UserRow) => ({
-  id: r.id, email: r.email, student_id: r.student_id, display_name: r.display_name,
+  id: r.id,
+  // 未绑定邮箱的账号用内部占位地址，不对前端暴露
+  email: isPlaceholderEmail(r.email) ? "" : r.email,
+  student_id: r.student_id, display_name: r.display_name,
   about: r.about || "", avatar_key: r.avatar_key || null, role: r.role || "user",
   banned: Boolean(r.banned), created_at: r.created_at, last_seen: r.last_seen || 0,
   show_online: r.show_online !== 0, read_receipts: r.read_receipts !== 0,
+  class_name: r.class_name || "", student_no: r.student_no || "",
+  email_bound: Boolean(r.email_bound) || (!isPlaceholderEmail(r.email) && r.email.includes("@")),
+  has_password: Boolean(r.password_hash),
 });
 
 export const getUserById = (env: Env, id: string) =>
@@ -145,28 +160,81 @@ export const getUserById = (env: Env, id: string) =>
 export const getUserByEmail = (env: Env, email: string) =>
   env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(normalizeEmail(email)).first<UserRow>();
 
-export async function createUser(
-  env: Env,
-  input: { email: string; student_id?: string; display_name?: string },
-  cfg: AppConfig,
-): Promise<UserRow> {
+export interface NewUserInput {
+  email: string;
+  student_id?: string;
+  display_name?: string;
+  class_name?: string;
+  student_no?: string;
+  password_hash?: string | null;
+  email_bound?: number;
+  role?: string;
+}
+
+/** 统一建号入口：注册 / 管理员新增都走这里，自动加入全校广场 */
+export async function createUser(env: Env, input: NewUserInput, cfg: AppConfig): Promise<UserRow> {
   const now = Date.now();
-  const local = normalizeEmail(input.email).split("@")[0];
+  const email = normalizeEmail(input.email);
+  const local = email.split("@")[0];
+  const cls = normClass(input.class_name);
+  const no = normStudentNo(input.student_no);
   const row: UserRow = {
     id: uid(),
-    email: normalizeEmail(input.email),
-    student_id: String(input.student_id || "").trim().slice(0, 40) || local.toUpperCase(),
-    display_name: String(input.display_name || "").trim().slice(0, 40) || local,
+    email,
+    student_id: String(input.student_id || "").trim().slice(0, 40)
+      || (cls && no ? `${cls} ${no}` : local.toUpperCase()),
+    display_name: String(input.display_name || "").trim().slice(0, 40)
+      || (cls && no ? `${cls} ${no}` : local),
     about: "", avatar_key: null,
-    role: cfg.adminEmails.includes(normalizeEmail(input.email)) ? "admin" : "user",
+    role: input.role === "admin" || cfg.adminEmails.includes(email) ? "admin" : "user",
     banned: 0, created_at: now, last_seen: now,
+    show_online: 1, read_receipts: 1,
+    class_name: cls, student_no: no, login_key: loginKeyOf(cls, no),
+    password_hash: input.password_hash ?? null,
+    email_bound: input.email_bound !== undefined ? input.email_bound
+      : (isPlaceholderEmail(email) ? 0 : 1),
   };
   await env.DB.prepare(
-    "INSERT INTO users (id,email,student_id,display_name,about,avatar_key,role,banned,created_at,last_seen) VALUES (?,?,?,?,?,?,?,?,?,?)",
-  ).bind(row.id, row.email, row.student_id, row.display_name, row.about, null, row.role, 0, now, now).run();
+    `INSERT INTO users (id,email,student_id,display_name,about,avatar_key,role,banned,created_at,last_seen,
+      show_online,read_receipts,class_name,student_no,login_key,password_hash,email_bound)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  ).bind(row.id, row.email, row.student_id, row.display_name, row.about, null, row.role, 0, now, now,
+    1, 1, row.class_name, row.student_no, row.login_key, row.password_hash, row.email_bound).run();
   await ensureDefaultGroup(env, row.id);
   return row;
 }
+
+/** 6C + 04 查账号；旧账号没有 login_key 时回退按 student_id 精确匹配 */
+export async function findUserByLogin(env: Env, cls: unknown, no: unknown): Promise<UserRow | null> {
+  const c = normClass(cls), n = normStudentNo(no);
+  if (!c || !n) return null;
+  const key = loginKeyOf(c, n);
+  const hit = await env.DB.prepare("SELECT * FROM users WHERE login_key=? LIMIT 1")
+    .bind(key).first<UserRow>();
+  if (hit) return hit;
+  return env.DB.prepare("SELECT * FROM users WHERE UPPER(REPLACE(student_id,' ',''))=? LIMIT 1")
+    .bind(key).first<UserRow>();
+}
+
+export async function setUserPassword(env: Env, userId: string, hash: string): Promise<void> {
+  await env.DB.prepare("UPDATE users SET password_hash=? WHERE id=?").bind(hash, userId).run();
+}
+
+export async function bindUserEmail(env: Env, userId: string, email: string): Promise<UserRow | null> {
+  const clean = normalizeEmail(email);
+  const taken = await env.DB.prepare("SELECT id FROM users WHERE email=? AND id!=?")
+    .bind(clean, userId).first<{ id: string }>();
+  if (taken) throw new Error("此校園郵箱已綁定其他帳號 / Email already bound to another account");
+  await env.DB.prepare("UPDATE users SET email=?, email_bound=1 WHERE id=?")
+    .bind(clean, userId).run();
+  return getUserById(env, userId);
+}
+
+/** 是否已绑定/验证校园邮箱（旧 OTP 账号自动视为已绑定） */
+export const isEmailBound = (r: UserRow): boolean =>
+  Boolean(r.email_bound) || !isPlaceholderEmail(r.email);
+
+export const placeholderEmail = (id: string): string => `noemail-${id}@schoolink.invalid`;
 
 export async function listUsers(env: Env, exceptId: string): Promise<UserRow[]> {
   const { results } = await env.DB.prepare(

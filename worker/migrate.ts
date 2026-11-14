@@ -1,5 +1,5 @@
 /**
- * v1 → v2 在线迁移（幂等，无需停机、无需换 D1 数据库）。
+ * v1 → v4 在线迁移（幂等，无需停机、无需换 D1 数据库）。
  *
  * 背景：v1 已经在线上跑过，D1 里的 users / threads / thread_members / messages
  * 是旧结构。`CREATE TABLE IF NOT EXISTS` 不会给已存在的表补列，
@@ -19,8 +19,12 @@ const DDL: string[] = [
     display_name TEXT NOT NULL, about TEXT NOT NULL DEFAULT '', avatar_key TEXT,
     role TEXT NOT NULL DEFAULT 'user', banned INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL DEFAULT 0,
-    show_online INTEGER NOT NULL DEFAULT 1, read_receipts INTEGER NOT NULL DEFAULT 1)`,
+    show_online INTEGER NOT NULL DEFAULT 1, read_receipts INTEGER NOT NULL DEFAULT 1,
+    class_name TEXT NOT NULL DEFAULT '', student_no TEXT NOT NULL DEFAULT '',
+    login_key TEXT NOT NULL DEFAULT '', password_hash TEXT,
+    email_bound INTEGER NOT NULL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+  `CREATE INDEX IF NOT EXISTS idx_users_login ON users(login_key)`,
   `CREATE TABLE IF NOT EXISTS threads (
     id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT, about TEXT NOT NULL DEFAULT '',
     avatar_key TEXT, direct_key TEXT UNIQUE, is_default INTEGER NOT NULL DEFAULT 0,
@@ -61,6 +65,11 @@ const NEW_COLUMNS: Record<string, string[]> = {
     "last_seen INTEGER NOT NULL DEFAULT 0",
     "show_online INTEGER NOT NULL DEFAULT 1",
     "read_receipts INTEGER NOT NULL DEFAULT 1",
+    "class_name TEXT NOT NULL DEFAULT ''",
+    "student_no TEXT NOT NULL DEFAULT ''",
+    "login_key TEXT NOT NULL DEFAULT ''",
+    "password_hash TEXT",
+    "email_bound INTEGER NOT NULL DEFAULT 0",
   ],
   threads: [
     "about TEXT NOT NULL DEFAULT ''",
@@ -87,7 +96,7 @@ let ready = false;
 export async function ensureSchema(env: Env): Promise<void> {
   if (ready) return;
   try {
-    const marker = await env.CACHE.get("SCHEMA:v3");
+    const marker = await env.CACHE.get("SCHEMA:v4");
     if (marker) { ready = true; return; }
   } catch { /* KV 暂时不可用也继续，DDL 本身幂等 */ }
 
@@ -112,6 +121,13 @@ export async function ensureSchema(env: Env): Promise<void> {
     }
   }
 
+  // 旧 OTP 账号本来就用校园邮箱注册，自动视为已绑定，避免迁移后无法登录
+  try {
+    await env.DB.prepare(
+      "UPDATE users SET email_bound=1 WHERE email_bound=0 AND email NOT LIKE 'noemail-%'",
+    ).run();
+  } catch { /* noop */ }
+
   // v1 图片 → v2 媒体字段（旧表有 image_key 时才执行）
   try {
     const { results } = await env.DB.prepare("PRAGMA table_info(messages)")
@@ -125,5 +141,5 @@ export async function ensureSchema(env: Env): Promise<void> {
   } catch { /* 无 image_key 列时跳过 */ }
 
   ready = true;
-  try { await kvPut(env.CACHE, "SCHEMA:v3", String(Date.now())); } catch { /* noop */ }
+  try { await kvPut(env.CACHE, "SCHEMA:v4", String(Date.now())); } catch { /* noop */ }
 }

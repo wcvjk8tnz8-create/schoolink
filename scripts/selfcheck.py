@@ -65,6 +65,7 @@ REQUIRED = [
     "worker/index.ts", "worker/store.ts", "worker/auth.ts", "worker/kv.ts", "worker/migrate.ts",
     "lib/prefs.ts", "lib/m4a.ts", "lib/faces.ts",
     "components/AvatarPicker.tsx", "components/Customize.tsx", "scripts/gen-icons.mjs",
+    "components/AIAssistant.tsx", "components/InstallGuide.tsx", "lib/ai.ts", "worker/password.ts",
     "worker/chat-room.ts", "worker/env.d.ts", "worker/util.ts", "worker/tsconfig.json",
     "public/manifest.webmanifest", "public/sw.js", "public/offline.html",
     "public/logo.svg", "public/favicon.svg",
@@ -197,7 +198,7 @@ creates = re.findall(r"CREATE\s+(TABLE|INDEX)\s+(?!IF\s+NOT\s+EXISTS)", sql, re.
 ok("所有 CREATE 均带 IF NOT EXISTS", not creates, str(len(creates)))
 mig = text("worker/migrate.ts")
 ok("在线表结构迁移已接入 /api/*", "ensureSchema" in mig and "ensureSchema(env)" in worker_src
-   and 'kvPut(env.CACHE, "SCHEMA:v3"' in mig)
+   and 'kvPut(env.CACHE, "SCHEMA:v4"' in mig)
 v2_extra = ["about", "banned", "last_seen", "last_message_at", "pinned", "muted",
             "archived", "starred", "media_key", "media_size", "reply_to",
             "forwarded_from", "edited_at", "deleted_at"]
@@ -350,7 +351,8 @@ ok("新字段在新库 schema 中", all(c in schema_d1 for c in new_cols),
    str([c for c in new_cols if c not in schema_d1]))
 ok("新字段在线上库自动补齐", all(c in migrate_d1 for c in new_cols),
    str([c for c in new_cols if c not in migrate_d1]))
-ok("迁移标记升级到 v3", '"SCHEMA:v3"' in migrate_d1 and '"SCHEMA:v2"' not in migrate_d1)
+ok("迁移标记升级到 v4", '"SCHEMA:v4"' in migrate_d1 and '"SCHEMA:v3"' not in migrate_d1
+   and '"SCHEMA:v2"' not in migrate_d1)
 
 wi = text("worker/index.ts")
 ok("公告频道服务端拦截发言", "announcement_only === 1" in wi and "Only owner/admins can post" in wi)
@@ -415,6 +417,61 @@ ok("通知 badge 指向剪影图标", 'badge: "/icons/icon-badge.png"' in text("
 ok("favicon 与 logo 同一套图形", "M84 100 L110 126 L84 152" in text("public/favicon.svg")
    and "M84 100 L110 126 L84 152" in text("public/logo.svg"))
 ok("README 说明 PWA 图标", "PWA 图标" in text("README.md") and "npm run icons" in text("README.md"))
+
+
+# ── 16. 班别学号登录 / 管理员加用户 / AI / PWA / 头像缩放 ────────────
+wi2 = text("worker/index.ts")
+ws2 = text("worker/store.ts")
+pw2 = text("worker/password.ts")
+login_ui = text("components/Login.tsx")
+admin_ui = text("components/Admin.tsx")
+ai_ui = text("components/AIAssistant.tsx")
+ai_lib = text("lib/ai.ts")
+guide = text("components/InstallGuide.tsx")
+front_store2 = text("lib/store.ts")
+picker2 = text("components/AvatarPicker.tsx")
+css2 = text("app/globals.css")
+
+ok("注册必须设密码（服务端）", '"/api/auth/register"' in wi2
+   and "isStrongPassword(b.password)" in wi2 and "hashPassword(b.password)" in wi2)
+ok("班别学号密码登录", '"/api/auth/login"' in wi2 and "verifyPassword(b.password" in wi2)
+ok("验证码登录不再自动建号", "Email not registered" in wi2
+   and "createUser(env, { email, student_id: body.student_id" not in wi2)
+ok("绑定校园邮箱用独立 OTP scope", '"bind"' in wi2 and "RATE:BIND" in wi2
+   and 'issueOtp(env, email, "bind")' in wi2)
+ok("管理员可新增用户", '"/api/admin/panel/users/create"' in wi2
+   and "adminCreateUser" in front_store2 and "user-console" in admin_ui)
+ok("管理员策略：仅已绑定邮箱可登入", "requireBoundEmail" in ws2 and "requireBoundEmail" in wi2
+   and "requireBoundEmail" in admin_ui)
+ok("密码 PBKDF2 且不明文存储", "pbkdf2$" in pw2 and "deriveBits" in pw2
+   and "timingSafeEqual" in pw2)
+ok("班别学号归一化 6C+04", "loginKeyOf" in text("worker/auth.ts") and "normClass" in text("worker/auth.ts"))
+ok("登录页三种入口齐全", all(x in login_ui for x in
+   ["loginWithPassword", "register", "requestCode", "bindRequest", "enterChat"]))
+ok("迁移补齐 v4 身份列", all(c in text("worker/migrate.ts") for c in
+   ["class_name", "student_no", "login_key", "password_hash", "email_bound"]))
+
+ok("AI 闲置 1 分钟触发", "IDLE_MS" in ai_lib and "60_000" in ai_lib
+   and "schoolink.ai.last" in ai_ui and "aiIdle" in ai_ui)
+ok("AI 提示词按用户原话发送", "IDLE_PROMPT" in ai_lib and "内容是：聊天吗？" in ai_lib
+   and "askAI(IDLE_PROMPT" in ai_ui)
+ok("AI 服务端优先 Workers AI 且有兜底", '"/api/ai"' in wi2 and "env.AI" in wi2
+   and "aiFallback" in wi2 and "RATE:AI" in wi2)
+ok("AI 绑定已声明", '"ai"' in text("wrangler.jsonc") and "AI?:" in text("worker/env.d.ts")
+   and 'ai: { binding: "AI" }' in text("scripts/provision.mjs"))
+ok("REQUIRE_BOUND_EMAIL 全链路透传", all("REQUIRE_BOUND_EMAIL" in text(f) for f in
+   ["scripts/provision.mjs", ".github/workflows/deploy.yml", "wrangler.jsonc", "worker/env.d.ts", "worker/store.ts"]))
+ok("AI 面板已挂载", "AIAssistant" in text("components/App.tsx")
+   and "setAiOpen" in text("components/Sidebar.tsx"))
+
+ok("PWA 安装按钮不会死", "appinstalled" in front_store2 and "installGuide" in front_store2
+   and "How to install" in text("components/ui.tsx") and "setInstallGuide" in guide
+   and ("Add to Home Screen" in guide or "加入主屏幕" in guide))
+ok("iOS Safari 走分享菜单指引", "Add to Home Screen" in guide or "加入主屏幕" in guide)
+ok("头像图片显式限尺寸", "style={{ width: size, height: size }}" in picker2
+   and ".av-visual.av-img" in css2 and "max-width:100%" in css2)
+ok("自定义中心有绑定/安装/AI 开关", all(x in text("components/Customize.tsx") for x in
+   ["bindRequest", "setPassword", "doInstall", "setInstallGuide", "aiIdle"]))
 
 # ── 汇总 ───────────────────────────────────────────────────────────
 print(" Schoolink self-check\n")

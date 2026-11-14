@@ -12,9 +12,15 @@ CREATE TABLE IF NOT EXISTS users (
   created_at   INTEGER NOT NULL,
   last_seen    INTEGER NOT NULL DEFAULT 0,
   show_online  INTEGER NOT NULL DEFAULT 1,
-  read_receipts INTEGER NOT NULL DEFAULT 1
+  read_receipts INTEGER NOT NULL DEFAULT 1,
+  class_name   TEXT NOT NULL DEFAULT '',
+  student_no   TEXT NOT NULL DEFAULT '',
+  login_key    TEXT NOT NULL DEFAULT '',
+  password_hash TEXT,
+  email_bound  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_login ON users(login_key);
 
 CREATE TABLE IF NOT EXISTS threads (
   id              TEXT PRIMARY KEY,

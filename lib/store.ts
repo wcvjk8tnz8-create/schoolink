@@ -12,6 +12,11 @@ import { usePrefs } from "./prefs";
 type View = "loading" | "login" | "chat" | "admin-login" | "admin";
 type Conn = "connecting" | "online" | "offline" | "reconnecting";
 
+interface InstallPromptLike {
+  prompt: () => Promise<void>;
+  userChoice?: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
 interface PendingItem {
   tempId: string;
   threadId: string;
@@ -51,8 +56,10 @@ interface State {
   newChatMode: "direct" | "group";
   userSearch: string;
   onlineIds: string[];
-  installPrompt: { prompt: () => Promise<void> } | null;
+  installPrompt: InstallPromptLike | null;
   showInstall: boolean;
+  installGuide: boolean;
+  aiOpen: boolean;
   adminForm: Record<string, string>;
   // actions
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -76,7 +83,13 @@ interface State {
   setAdminForm: (k: string, v: string) => void;
   // auth
   requestCode: (email: string) => Promise<{ devCode?: string }>;
-  verifyCode: (input: { email: string; code: string; student_id?: string; display_name?: string }) => Promise<void>;
+  verifyCode: (input: { email: string; code: string }) => Promise<void>;
+  register: (input: { class_name: string; student_no: string; display_name: string; password: string }) => Promise<void>;
+  enterChat: () => Promise<void>;
+  loginWithPassword: (input: { class_name: string; student_no: string; password: string }) => Promise<void>;
+  bindRequest: (email: string) => Promise<{ devCode?: string }>;
+  bindVerify: (email: string, code: string) => Promise<void>;
+  setPassword: (oldPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   adminLogin: (password: string) => Promise<void>;
   adminLogout: () => Promise<void>;
@@ -84,6 +97,11 @@ interface State {
   adminSave: () => Promise<void>;
   adminTestMail: (to: string) => Promise<void>;
   adminToggleBan: (userId: string, banned: boolean) => Promise<void>;
+  adminCreateUser: (input: {
+    class_name: string; student_no: string; display_name: string;
+    email?: string; password?: string; role?: string;
+  }) => Promise<void>;
+  adminSetPassword: (userId: string, password: string) => Promise<void>;
   // chat
   refreshThreads: () => Promise<void>;
   loadUsers: () => Promise<void>;
@@ -114,6 +132,8 @@ interface State {
   }) => Promise<void>;
   doInstall: () => Promise<void>;
   dismissInstall: () => void;
+  setInstallGuide: (v: boolean) => void;
+  setAiOpen: (v: boolean) => void;
   connect: () => void;
   disconnect: () => void;
 }
@@ -205,6 +225,8 @@ export const useApp = create<State>((set, get) => ({
   onlineIds: [],
   installPrompt: null,
   showInstall: false,
+  installGuide: false,
+  aiOpen: false,
   adminForm: {},
 
   t: (key, vars) => translate(get().lang, key, vars),
@@ -227,12 +249,27 @@ export const useApp = create<State>((set, get) => ({
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => { /* noop */ });
     }
+    const nav = navigator as Navigator & { standalone?: boolean };
+    const standalone = window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (nav.platform === "MacIntel" && nav.maxTouchPoints > 1);
+    if (standalone) localStorage.setItem("schoolink.installed", "1");
+    const installBlocked = () => Boolean(localStorage.getItem("schoolink.install-dismissed")
+      || localStorage.getItem("schoolink.installed"));
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
-      if (!localStorage.getItem("schoolink.install-dismissed")) {
-        set({ installPrompt: e as unknown as { prompt: () => Promise<void> }, showInstall: true });
-      }
+      if (installBlocked()) return;
+      set({ installPrompt: e as unknown as InstallPromptLike, showInstall: true });
     });
+    window.addEventListener("appinstalled", () => {
+      localStorage.setItem("schoolink.installed", "1");
+      set({ showInstall: false, installPrompt: null, installGuide: false });
+      get().toastMsg("Schoolink 已安裝 / Installed", "ok");
+    });
+    // iPad / iPhone Safari 不派发 beforeinstallprompt：显示「如何安装」而不是死按钮
+    if (ios && !standalone && !installBlocked()) {
+      set({ showInstall: true, installPrompt: null });
+    }
     window.addEventListener("online", () => { get().flushQueue(); get().connect(); });
     window.addEventListener("offline", () => set({ conn: "offline" }));
 
@@ -332,9 +369,39 @@ export const useApp = create<State>((set, get) => ({
     return {};
   },
   verifyCode: async (input) => {
-    const r = await post<{ user: User }>("/api/auth/otp/verify", input);
+    const r = await post<{ user: User }>("/api/auth/otp/verify", { email: input.email, code: input.code });
     set({ me: r.user, view: "chat" });
     await get().bootstrapChat();
+  },
+  register: async (input) => {
+    // 注册后先停在「绑定校园邮箱」步骤，由 Login 决定何时进入聊天
+    const r = await post<{ user: User }>("/api/auth/register", input);
+    set({ me: r.user });
+  },
+  enterChat: async () => {
+    set({ view: "chat" });
+    await get().bootstrapChat();
+  },
+  loginWithPassword: async (input) => {
+    const r = await post<{ user: User }>("/api/auth/login", input);
+    set({ me: r.user, view: "chat" });
+    await get().bootstrapChat();
+  },
+  bindRequest: async (email) => {
+    const r = await post<{ delivery: string; code?: string }>("/api/auth/bind/request", { email });
+    if (r.delivery === "dev" && r.code) return { devCode: r.code };
+    get().toastMsg(get().t("codeSent"), "ok");
+    return {};
+  },
+  bindVerify: async (email, code) => {
+    const r = await post<{ user: User }>("/api/auth/bind/verify", { email, code });
+    set({ me: r.user });
+    get().toastMsg("校園郵箱已綁定 / Campus email bound", "ok");
+  },
+  setPassword: async (oldPassword, newPassword) => {
+    await post("/api/profile/password", { oldPassword, newPassword });
+    set({ me: get().me ? { ...get().me!, has_password: true } : null });
+    get().toastMsg("密碼已更新 / Password updated", "ok");
   },
   logout: async () => {
     try { await post("/api/logout"); } catch { /* noop */ }
@@ -354,6 +421,7 @@ export const useApp = create<State>((set, get) => ({
         mailFrom: r.config.mailFrom || "",
         mailApiBase: r.config.mailApiBase || "",
         mailApiToken: "", testTo: "",
+        requireBoundEmail: r.config.requireBoundEmail ? "1" : "0",
       },
     });
     await get().adminLoad();
@@ -376,6 +444,7 @@ export const useApp = create<State>((set, get) => ({
           mailFrom: r.config.mailFrom || "",
           mailApiBase: r.config.mailApiBase || "",
           mailApiToken: "", testTo: "",
+          requireBoundEmail: r.config.requireBoundEmail ? "1" : "0",
         },
       });
       try {
@@ -391,6 +460,7 @@ export const useApp = create<State>((set, get) => ({
     const body: Record<string, unknown> = {
       domains: f.domains, adminEmails: f.adminEmails, schoolName: f.schoolName,
       r2PublicBaseUrl: f.r2PublicBaseUrl, mailFrom: f.mailFrom, mailApiBase: f.mailApiBase,
+      requireBoundEmail: f.requireBoundEmail === "1",
     };
     if (f.mailApiToken?.trim()) body.mailApiToken = f.mailApiToken.trim();
     const r = await post<{ config: Config }>("/api/admin/panel/config", body);
@@ -404,6 +474,15 @@ export const useApp = create<State>((set, get) => ({
   adminToggleBan: async (userId, banned) => {
     await post("/api/admin/panel/users/ban", { userId, banned });
     set({ adminUsers: get().adminUsers.map((u) => u.id === userId ? { ...u, banned } : u) });
+  },
+  adminCreateUser: async (input) => {
+    await post("/api/admin/panel/users/create", input);
+    await get().adminLoad();
+    get().toastMsg("用戶已新增 / User created", "ok");
+  },
+  adminSetPassword: async (userId, password) => {
+    await post("/api/admin/panel/users/password", { userId, password });
+    get().toastMsg("密碼已重設 / Password reset", "ok");
   },
 
   /* ------------------------------ 会话 ------------------------------ */
@@ -644,13 +723,24 @@ export const useApp = create<State>((set, get) => ({
     get().toastMsg(get().t("saved"), "ok");
   },
   doInstall: async () => {
-    try { await get().installPrompt?.prompt(); } catch { /* noop */ }
+    const p = get().installPrompt;
+    if (!p) { set({ installGuide: true }); return; }
+    try {
+      await p.prompt();
+      const choice = p.userChoice ? await p.userChoice : null;
+      if (choice?.outcome === "accepted") {
+        localStorage.setItem("schoolink.installed", "1");
+        get().toastMsg("Schoolink 已安裝 / Installed", "ok");
+      }
+    } catch { set({ installGuide: true }); return; }
     set({ showInstall: false, installPrompt: null });
   },
   dismissInstall: () => {
     localStorage.setItem("schoolink.install-dismissed", "1");
     set({ showInstall: false });
   },
+  setInstallGuide: (v) => set({ installGuide: v }),
+  setAiOpen: (v) => set({ aiOpen: v }),
 }));
 
 function replaceMessage(

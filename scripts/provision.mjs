@@ -32,6 +32,7 @@ const ADMIN_EMAILS = env.ADMIN_EMAILS || `admin@${ALLOWED_EMAIL_DOMAINS.split(",
 const SCHOOL_NAME = env.SCHOOL_NAME || "Schoolink 校園";
 const ALLOW_DEV_OTP = /^(1|true|yes|on)$/i.test(String(env.ALLOW_DEV_OTP ?? "0")) ? "1" : "0";
 const R2_PUBLIC_BASE_URL = ENABLE_R2 ? (env.R2_PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "") : "";
+const REQUIRE_BOUND_EMAIL = /^(1|true|yes|on)$/i.test(String(env.REQUIRE_BOUND_EMAIL ?? "0")) ? "1" : "0";
 
 const BASE = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}`;
 const log = (...a) => console.log("  ", ...a);
@@ -153,9 +154,10 @@ const config = {
   d1_databases: [{ binding: "DB", database_name: D1_NAME, database_id: d1Id }],
   kv_namespaces: [{ binding: "CACHE", id: kvId }],
   ...(r2Name ? { r2_buckets: [{ binding: "IMAGES", bucket_name: r2Name }] } : {}),
+  ai: { binding: "AI" },
   durable_objects: { bindings: [{ name: "REALTIME", class_name: "RealtimeHub" }] },
   migrations: [{ tag: "v1", new_sqlite_classes: ["RealtimeHub"] }],
-  vars: { ALLOWED_EMAIL_DOMAINS, ADMIN_EMAILS, SCHOOL_NAME, ALLOW_DEV_OTP, R2_PUBLIC_BASE_URL },
+  vars: { ALLOWED_EMAIL_DOMAINS, ADMIN_EMAILS, SCHOOL_NAME, ALLOW_DEV_OTP, R2_PUBLIC_BASE_URL, REQUIRE_BOUND_EMAIL },
   ...(CUSTOM_DOMAIN ? { routes: [{ pattern: CUSTOM_DOMAIN, custom_domain: true }], workers_dev: false } : {}),
 };
 

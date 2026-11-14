@@ -76,7 +76,9 @@ export function AvatarVisual({ value, label, size, base = "", seed = "" }: {
     );
   }
   if (p?.kind === "image") {
-    return <img className="av-visual av-img" src={mediaUrl(p.key, base)} alt={label} />;
+    // 关键：显式给定尺寸，否则 <img> 会按原图像素撑爆弹窗（群组资料里那张巨大头像）
+    return <img className="av-visual av-img" style={{ width: size, height: size }}
+      src={mediaUrl(p.key, base)} alt={label} />;
   }
   return (
     <span className="av-visual av-default" style={{ width: size, height: size, ...avatarStyle(seed || label) }}>

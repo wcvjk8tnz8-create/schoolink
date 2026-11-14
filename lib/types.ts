@@ -14,6 +14,10 @@ export interface User {
   last_seen: number;
   show_online: boolean;
   read_receipts: boolean;
+  class_name: string;
+  student_no: string;
+  email_bound: boolean;
+  has_password: boolean;
 }
 
 export interface Thread {
@@ -94,6 +98,8 @@ export interface Config {
   adminPasswordSet?: boolean;
   devOtp?: boolean;
   r2Enabled: boolean;
+  requireBoundEmail?: boolean;
+  aiEnabled?: boolean;
   updatedAt?: number | null;
 }
 

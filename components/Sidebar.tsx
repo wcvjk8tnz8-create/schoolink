@@ -153,6 +153,8 @@ export default function Sidebar() {
           <Avatar user={me} size={36} online />
           <div><strong>{me?.display_name}</strong><small>{me?.student_id}</small></div>
         </motion.button>
+        <IconButton title="AI 助手 / AI assistant" onClick={() => useApp.getState().setAiOpen(true)}>
+          <Icon name="smile" size={17} /></IconButton>
         <IconButton title={t("starredTitle")} onClick={() => {
           useApp.getState().loadStarred(); useApp.getState().setModal("starred");
         }}><Icon name="star" size={17} /></IconButton>

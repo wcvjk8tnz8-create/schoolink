@@ -9,6 +9,8 @@ import { Toast, InstallBanner, Spinner } from "./ui";
 import Login from "./Login";
 import Admin from "./Admin";
 import Chat from "./Chat";
+import AIAssistant from "./AIAssistant";
+import InstallGuide from "./InstallGuide";
 
 export default function App() {
   const view = useApp((s) => s.view);
@@ -91,6 +93,8 @@ export default function App() {
 
       <Toast />
       <InstallBanner />
+      <AIAssistant />
+      <InstallGuide />
     </div>
     </MotionConfig>
   );

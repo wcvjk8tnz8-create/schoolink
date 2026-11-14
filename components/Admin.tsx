@@ -8,6 +8,11 @@ import { Clover } from "./Logo";
 import { Avatar, IconButton, Spinner, softSpring } from "./ui";
 import { Icon } from "./Icon";
 import { LANGS, LANG_LABEL } from "@/lib/i18n";
+import type { Lang } from "@/lib/types";
+
+function L(lang: Lang, cn: string, hk: string, en: string): string {
+  return lang === "en" ? en : lang === "zh-HK" ? hk : cn;
+}
 
 export default function Admin() {
   const view = useApp((s) => s.view);
@@ -95,6 +100,32 @@ function AdminConsole() {
   const setF = useApp((s) => s.setAdminForm);
   const [busy, setBusy] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
+  const [consoleOpen, setConsoleOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [nu, setNuState] = useState({ class_name: "", student_no: "", display_name: "", email: "", password: "", role: "user" });
+  const setNu = (k: keyof typeof nu, v: string) => setNuState((x) => ({ ...x, [k]: v }));
+  const openConsole = () => {
+    setConsoleOpen(true);
+    setTimeout(() => document.getElementById("user-console")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+  };
+  const addUser = async () => {
+    setAddBusy(true);
+    try {
+      await useApp.getState().adminCreateUser({
+        class_name: nu.class_name, student_no: nu.student_no,
+        display_name: nu.display_name, email: nu.email || undefined,
+        password: nu.password || undefined, role: nu.role,
+      });
+      setNuState({ class_name: "", student_no: "", display_name: "", email: "", password: "", role: "user" });
+    } catch (e) { useApp.getState().toastMsg((e as Error).message, "err"); }
+    finally { setAddBusy(false); }
+  };
+  const resetPw = async (userId: string) => {
+    const pw = window.prompt(L(lang, "输入新密码（至少 6 位）", "輸入新密碼（至少 6 位）", "New password (min. 6 chars)"));
+    if (!pw) return;
+    try { await useApp.getState().adminSetPassword(userId, pw); }
+    catch (e) { useApp.getState().toastMsg((e as Error).message, "err"); }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -126,6 +157,7 @@ function AdminConsole() {
           {LANGS.map((l) => <button key={l} className={lang === l ? "on" : ""}
             onClick={() => useApp.getState().setLang(l)}>{LANG_LABEL[l]}</button>)}
         </div>
+        <button className="btn primary small" onClick={openConsole}><Icon name="users" size={15} /> {L(lang, "控制台", "控制台", "Console")}</button>
         <a className="btn" href="/">{t("openChat")}</a>
         <button className="btn" onClick={() => useApp.getState().adminLogout()}>{t("signOut")}</button>
       </motion.header>
@@ -180,6 +212,12 @@ function AdminConsole() {
             <Field label={t("r2Url")}>
               <input value={f.r2PublicBaseUrl || ""} onChange={(e) => setF("r2PublicBaseUrl", e.target.value)}
                 placeholder="https://img.plkshs.edu.hk" /></Field>
+            <label className="admin-check"><input type="checkbox" checked={f.requireBoundEmail === "1"}
+              onChange={(e) => setF("requireBoundEmail", e.target.checked ? "1" : "0")} />
+              <span><strong>{L(lang, "只允许已绑定校园邮箱的账号登入", "只允許已綁定校園郵箱嘅帳號登入", "Only allow accounts with a bound campus email")}</strong>
+              <small>{L(lang, "开启后可防止用别人的班别学号乱登入；旧 OTP 账号自动视为已绑定",
+                "開啟後可防止用別人嘅班別學號亂登入；舊 OTP 帳號自動視為已綁定",
+                "Prevents random sign-ins; legacy email accounts count as bound")}</small></span></label>
             <div className="stats">
               <div className="stat"><b>{stats.users}</b><small>{t("users")}</small></div>
               <div className="stat"><b>{stats.threads}</b><small>{t("threads")}</small></div>
@@ -194,8 +232,12 @@ function AdminConsole() {
                   <motion.div key={u.id} className="admin-user-row" layout
                     initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
                     <Avatar user={u} size={30} />
-                    <div className="au-info"><strong>{u.display_name}</strong><small>{u.email}</small></div>
-                    <span className={`au-badge ${u.banned ? "off" : "on"}`}>{u.banned ? t("disabled") : t("active")}</span>
+                    <div className="au-info"><strong>{u.display_name}</strong>
+                      <small>{u.class_name && u.student_no ? `${u.class_name} ${u.student_no}` : (u.email || u.student_id)}</small></div>
+                    <span className={`au-badge ${u.email_bound ? "on" : "warn"}`}>
+                      {u.email_bound ? L(lang, "已绑定", "已綁定", "Bound") : L(lang, "未绑定", "未綁定", "Unbound")}</span>
+                    <button className="mini" onClick={() => resetPw(u.id)} title={L(lang, "重设密码", "重設密碼", "Reset password")}>
+                      <Icon name="key" size={13} /></button>
                     <button className="mini" onClick={() => useApp.getState().adminToggleBan(u.id, !u.banned)}>
                       {u.banned ? t("unban") : t("ban")}
                     </button>
@@ -205,6 +247,57 @@ function AdminConsole() {
               {!users.length && <div className="muted-line">{t("noResults")}</div>}
             </div>
           </Panel>
+
+          <motion.section id="user-console" className="panel"
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, ...softSpring }}>
+            <AnimatePresence initial={false}>
+              {consoleOpen && (
+                <motion.div key="console-body" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}>
+                  <h2><Icon name="plus" size={17} />{L(lang, "用户控制台 · 新增用户", "用戶控制台 · 新增用戶", "User console · Add user")}</h2>
+                  <p className="desc">{L(lang,
+                    "只需填班别与学号；再填邮箱或初始密码至少一项，学生就能登入。",
+                    "只需填班別同學號；再填電郵或初始密碼至少一項，學生就登入到。",
+                    "Only class + student number required; add an email or an initial password so they can sign in.")}</p>
+                  <div className="admin-add-grid">
+                    <div className="field"><label>{L(lang, "班别", "班別", "Class")}</label>
+                      <input value={nu.class_name} onChange={(e) => setNu("class_name", e.target.value.toUpperCase())}
+                        placeholder="6C" maxLength={8} /></div>
+                    <div className="field"><label>{L(lang, "学号", "學號", "Student no.")}</label>
+                      <input value={nu.student_no} onChange={(e) => setNu("student_no", e.target.value.toUpperCase())}
+                        placeholder="04" maxLength={8} /></div>
+                    <div className="field"><label>{L(lang, "显示名", "顯示名", "Display name")}</label>
+                      <input value={nu.display_name} onChange={(e) => setNu("display_name", e.target.value)}
+                        placeholder={L(lang, "例如：陈小明", "例如：陳小明", "e.g. Chan Siu Ming")} maxLength={40} /></div>
+                    <div className="field"><label>{L(lang, "校园邮箱（选填）", "校園郵箱（選填）", "Campus email (optional)")}</label>
+                      <input value={nu.email} onChange={(e) => setNu("email", e.target.value)}
+                        placeholder={`201A0000${cfg.domains[0] || "@plkshs.edu.hk"}`} inputMode="email" /></div>
+                    <div className="field"><label>{L(lang, "初始密码（选填）", "初始密碼（選填）", "Initial password (optional)")}</label>
+                      <input type="password" value={nu.password} onChange={(e) => setNu("password", e.target.value)}
+                        autoComplete="new-password" /></div>
+                    <div className="field"><label>{L(lang, "身份", "身份", "Role")}</label>
+                      <select value={nu.role} onChange={(e) => setNu("role", e.target.value)}>
+                        <option value="user">{L(lang, "学生", "學生", "Student")}</option>
+                        <option value="admin">{L(lang, "管理员", "管理員", "Admin")}</option>
+                      </select></div>
+                  </div>
+                  <div className="admin-add-actions">
+                    <button className="btn primary" onClick={addUser}
+                      disabled={addBusy || !nu.class_name.trim() || !nu.student_no.trim() || (!nu.email.trim() && !nu.password)}>
+                      {addBusy ? <Spinner size={14} /> : <Icon name="plus" size={15} />}
+                      {L(lang, "新增用户", "新增用戶", "Add user")}
+                    </button>
+                    <button className="btn" onClick={() => setConsoleOpen(false)}>{t("close")}</button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {!consoleOpen && (
+              <button className="btn primary big full" onClick={openConsole}>
+                <Icon name="users" size={16} /> {L(lang, "打开控制台新增用户", "打開控制台新增用戶", "Open console to add users")}
+              </button>
+            )}
+          </motion.section>
         </div>
       </div>
 
